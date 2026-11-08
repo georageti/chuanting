@@ -22,6 +22,7 @@ from . import lexicon as lx
 
 WEB = Path(__file__).resolve().parent.parent / "web"
 app = FastAPI(title="川听", docs_url=None, redoc_url=None)
+UVICORN = None  # run.py 启动时放进 uvicorn.Server，用来正常退出
 
 
 @app.middleware("http")
@@ -523,7 +524,7 @@ async def api_tts(text: str, lang: str = "en", slow: bool = False):
         path = await tts.synth(text, voice, rate)
     except tts.TTSError as e:
         err(str(e), 503)
-    media = "audio/mpeg" if path.suffix == ".mp3" else "audio/mp4"
+    media = {".mp3": "audio/mpeg", ".wav": "audio/wav"}.get(path.suffix, "audio/mp4")
     return FileResponse(path, media_type=media, headers={"Cache-Control": "max-age=31536000"})
 
 
@@ -572,7 +573,13 @@ def api_quit(request: Request):
     要求自定义请求头：别的网页跨域发不了带这个头的请求，没法偷偷关掉它。"""
     if request.headers.get("x-chuanting") != "1":
         err("不允许", 403)
-    threading.Timer(0.4, lambda: os.kill(os.getpid(), signal.SIGINT)).start()
+    def stop() -> None:
+        if UVICORN is not None:
+            UVICORN.should_exit = True  # 正常退出，Windows 上也适用
+        else:
+            os.kill(os.getpid(), signal.SIGINT)
+
+    threading.Timer(0.4, stop).start()
     return {"ok": True}
 
 

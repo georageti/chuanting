@@ -1,7 +1,7 @@
 """朗读：edge-tts（微软神经网络语音，免费、不用 Key）合成句子，按文本缓存。
-连不上微软时退回 macOS 自带的 say（离线）。
+连不上微软时退回系统自带的离线语音：macOS 用 say，Windows 用 SAPI（System.Speech），都直接输出 WAV。
 
-导出听力包：把各段语音解码成 PCM（macOS 自带 afconvert），中间插入“嘀”声和停顿，再用 lameenc 编成 MP3。
+导出听力包：用 miniaudio 把各段语音解码成 PCM（Mac、Windows 通用），中间插入“嘀”声和停顿，再用 lameenc 编成 MP3。
 """
 from __future__ import annotations
 
@@ -9,9 +9,9 @@ import asyncio
 import hashlib
 import math
 import struct
+import os
 import subprocess
-import tempfile
-import wave
+import sys
 from pathlib import Path
 
 from .store import AUDIO_DIR
@@ -59,14 +59,14 @@ def _cache_path(text: str, voice: str, rate: str, ext: str) -> Path:
 
 
 async def synth(text: str, voice: str, rate: str = "+0%") -> Path:
-    """返回音频文件路径（mp3；离线兜底时是 m4a）"""
+    """返回音频文件路径（mp3；离线兜底时是 wav）"""
     text = text.strip()
     mp3 = _cache_path(text, voice, rate, "mp3")
     if mp3.exists() and mp3.stat().st_size > 0:
         return mp3
-    m4a = _cache_path(text, "say:" + voice, rate, "m4a")
-    if m4a.exists():
-        return m4a
+    wav = _cache_path(text, "offline:" + voice, rate, "wav")
+    if wav.exists() and wav.stat().st_size > 44:
+        return wav
     mp3.parent.mkdir(parents=True, exist_ok=True)
     async with _sem:
         try:
@@ -80,30 +80,56 @@ async def synth(text: str, voice: str, rate: str = "+0%") -> Path:
             return mp3
         except Exception:
             try:
-                return await asyncio.to_thread(_say, text, voice, m4a)
+                return await asyncio.to_thread(offline_tts, text, voice, wav)
             except Exception as e:
                 raise TTSError("语音合成失败：连不上微软朗读，本机离线朗读也没成功") from e
 
 
-def _say(text: str, voice: str, out: Path) -> Path:
+# Windows：用 PowerShell 调系统自带的 System.Speech。文字和路径走环境变量，不拼进命令，避免引号和注入问题
+_SAPI_PS = r"""
+Add-Type -AssemblyName System.Speech
+$s = New-Object System.Speech.Synthesis.SpeechSynthesizer
+$want = $env:CHUANTING_CULTURE
+$v = $s.GetInstalledVoices() | Where-Object { $_.Enabled -and $_.VoiceInfo.Culture.Name -eq $want } | Select-Object -First 1
+if (-not $v) { $v = $s.GetInstalledVoices() | Where-Object { $_.Enabled -and $_.VoiceInfo.Culture.Name.StartsWith($want.Substring(0, 2)) } | Select-Object -First 1 }
+if ($v) { $s.SelectVoice($v.VoiceInfo.Name) }
+$fmt = New-Object System.Speech.AudioFormat.SpeechAudioFormatInfo(24000, [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen, [System.Speech.AudioFormat.AudioChannel]::Mono)
+$s.SetOutputToWaveFile($env:CHUANTING_OUT, $fmt)
+$s.Speak($env:CHUANTING_TEXT)
+$s.Dispose()
+"""
+
+
+def offline_tts(text: str, voice: str, out: Path) -> Path:
+    """系统自带的离线语音，输出 24kHz 单声道 WAV（浏览器能直接播放，miniaudio 能解码）"""
     out.parent.mkdir(parents=True, exist_ok=True)
-    mac_voice = "Ting-Ting" if voice.startswith("zh") else ("Daniel" if voice.startswith("en-GB") else "Samantha")
-    with tempfile.TemporaryDirectory() as d:
-        aiff = Path(d) / "a.aiff"
-        subprocess.run(["say", "-v", mac_voice, "-o", str(aiff), text], check=True, capture_output=True)
-        subprocess.run(["afconvert", "-f", "m4af", "-d", "aac", str(aiff), str(out)], check=True, capture_output=True)
+    tmp = out.with_suffix(".part.wav")
+    if sys.platform == "darwin":
+        mac_voice = "Ting-Ting" if voice.startswith("zh") else ("Daniel" if voice.startswith("en-GB") else "Samantha")
+        subprocess.run(["say", "-v", mac_voice, "--file-format=WAVE", f"--data-format=LEI16@{RATE}", "-o", str(tmp), text],
+                       check=True, capture_output=True, timeout=60)
+    elif sys.platform == "win32":
+        culture = "zh-CN" if voice.startswith("zh") else ("en-GB" if voice.startswith("en-GB") else "en-US")
+        env = {**os.environ, "CHUANTING_TEXT": text, "CHUANTING_OUT": str(tmp), "CHUANTING_CULTURE": culture}
+        subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", _SAPI_PS],
+                       check=True, capture_output=True, timeout=60, env=env,
+                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    else:
+        raise RuntimeError("这个系统没有可用的离线语音")
+    if not tmp.exists() or tmp.stat().st_size <= 44:
+        raise RuntimeError("离线语音没有生成音频")
+    tmp.replace(out)
     return out
 
 
 # ---------- PCM 拼接 ----------
 
 def to_pcm(path: Path) -> bytes:
-    with tempfile.TemporaryDirectory() as d:
-        wav = Path(d) / "a.wav"
-        subprocess.run(["afconvert", "-f", "WAVE", "-d", f"LEI16@{RATE}", "-c", "1", str(path), str(wav)],
-                       check=True, capture_output=True)
-        with wave.open(str(wav)) as w:
-            return w.readframes(w.getnframes())
+    """mp3 / wav → 24kHz 单声道 16 位 PCM（miniaudio，Mac、Windows 都能用）"""
+    import miniaudio
+
+    d = miniaudio.decode_file(str(path), output_format=miniaudio.SampleFormat.SIGNED16, nchannels=1, sample_rate=RATE)
+    return d.samples.tobytes()
 
 
 def silence(ms: int) -> bytes:

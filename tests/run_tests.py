@@ -34,7 +34,7 @@ def check(name, cond, detail=""):
         print(f"  ✗ {name}  {detail}")
 
 
-SAMPLE = (ROOT / "tests/sample.txt").read_text()
+SAMPLE = (ROOT / "tests/sample.txt").read_text(encoding="utf-8")
 
 print("抽词")
 cands = [c.to_dict() for c in extract.extract(SAMPLE)]
@@ -319,6 +319,21 @@ items = {i["key"]: i for i in c.get("/api/items").json()}
 check("生词本带上来源文档", items["long commute"]["docTitle"] == "ai" and items[S2]["docId"] == d3["id"], items["long commute"])
 r = c.post("/api/review", json={"key": S2, "ctxId": card["ctxId"], "mistakes": 0}).json()
 check("整句也按 FSRS 安排复习", r["state"]["due"] > srs.today())
+
+print("跨平台")
+import wave as _wave  # noqa: E402
+
+_w = Path(os.environ["CHUANTING_HOME"]) / "t.wav"
+with _wave.open(str(_w), "wb") as w:
+    w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000); w.writeframes(b"\x10\x00" * 16000)
+pcm = _tts.to_pcm(_w)
+check("miniaudio 解码并重采样到 24kHz", abs(len(pcm) - 48000) <= 200, len(pcm))
+check("数据目录按系统选", str(store._default_home()).endswith("川听"))
+if sys.platform == "darwin":
+    out = _tts.offline_tts("offline voice test", "en-US-AriaNeural", Path(os.environ["CHUANTING_HOME"]) / "o.wav")
+    check("离线语音输出 WAV 并能解码", out.suffix == ".wav" and len(_tts.to_pcm(out)) > 10000)
+from chuanting import __main__ as _m  # noqa: E402
+check("没运行时 already_running 为假", _m.already_running("http://127.0.0.1:1/") is False)
 
 if "--tts" in sys.argv:
     print("语音（联网）")

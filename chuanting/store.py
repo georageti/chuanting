@@ -1,19 +1,29 @@
 """用户数据：文档、学习词条、语境句、复习状态、设置。
 
-默认放在 ~/Library/Application Support/川听/；设置环境变量 CHUANTING_HOME 可以换位置（测试用）。
+默认位置：macOS ~/Library/Application Support/川听/，Windows %APPDATA%\川听\，其他系统 ~/.local/share/川听/。
+设置环境变量 CHUANTING_HOME 可以换位置（测试用）。
 """
 from __future__ import annotations
 
 import json
 import os
 import sqlite3
+import sys
 import threading
 import time
 from pathlib import Path
 
 from . import srs
 
-HOME = Path(os.environ.get("CHUANTING_HOME") or Path.home() / "Library/Application Support/川听")
+def _default_home() -> Path:
+    if sys.platform == "win32":
+        return Path(os.environ.get("APPDATA") or Path.home() / "AppData/Roaming") / "川听"
+    if sys.platform == "darwin":
+        return Path.home() / "Library/Application Support/川听"
+    return Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share") / "川听"
+
+
+HOME = Path(os.environ.get("CHUANTING_HOME") or _default_home())
 DB_PATH = HOME / "chuanting.db"
 CONFIG_PATH = HOME / "config.json"
 AUDIO_DIR = HOME / "audio"

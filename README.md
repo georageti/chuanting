@@ -4,17 +4,15 @@
 
 ## 启动
 
-**快捷入口**：在“应用程序”里打开 **川听**，或者按 `⌘ 空格` 用 Spotlight 搜“川听”。打开后可以在程序坞里的图标上右键，选“选项 → 在程序坞中保留”。
+**Mac**：在“应用程序”里打开 **川听**，或者按 `⌘ 空格` 用 Spotlight 搜“川听”。打开后可以在程序坞里的图标上右键，选“选项 → 在程序坞中保留”。快捷入口用 `python3 -I scripts/build_mac_app.py --install` 生成（装到 `~/Applications/川听.app`），项目文件夹挪了位置要重新生成一次。也可以双击 `启动川听.command`。
 
-- 川听已经在运行时，点开只会打开网页；没在运行时，先在后台启动（不弹终端窗口，约 1 秒），再打开网页。
-- 用完在网页「设置」最下面点“关闭川听”。后台日志在 `~/Library/Logs/川听.log`。
-- 重新生成或安装快捷入口：`python3 -I scripts/build_mac_app.py --install`（装到 `~/Applications/川听.app`）。项目文件夹挪了位置要重新生成一次。
+**Windows**：双击桌面或开始菜单里的 **川听**（安装脚本会建好这两个快捷方式），或者双击项目里的 `启动川听.bat`。不会弹黑色窗口。
 
-也可以双击项目里的 `启动川听.command`，或者在终端里运行：
+两边都一样：
 
-```bash
-.venv/bin/python run.py
-```
+- 川听已经在运行时，再点只会打开网页；没在运行时，先在后台启动（约 1 秒），再打开网页。
+- 用完在网页「设置」最下面点“关闭川听”。
+- 在终端里启动：`.venv/bin/python run.py`（Windows：`.venv\Scripts\python.exe run.py`）。
 
 第一次用之前，到「设置」里填 DeepSeek 的 API Key（platform.deepseek.com 申请）。不填也能用：程序会直接把原文句子挖空来练。
 
@@ -57,7 +55,7 @@ chuanting/   后端（FastAPI）
   extract.py   分句、分词、单词和词组识别（允许变形、拆开写、sb/sth 占位）
   lexicon.py   词典查询、词形还原
   ai.py        生成语境句和挖空，以及原文兜底
-  tts.py       edge-tts 朗读与缓存，MP3 听力包拼接（afconvert 解码，lameenc 编码）
+  tts.py       edge-tts 朗读与缓存；离线兜底 macOS say / Windows SAPI；MP3 听力包（miniaudio 解码，lameenc 编码）
   srs.py       FSRS-5（与川打 srs.js 同一套公式和参数）
   store.py     SQLite 和设置
   server.py    接口
@@ -65,16 +63,22 @@ web/         网页（原生 JS，支持深色模式）
   fonts/       Funnel Display / Funnel Sans / DM Mono（本地，SIL OFL）
   icons/       taste-skill icons.mjs 下载的图标，来源见 icons-credits.json
 scripts/build_dict.py   把 ECDICT 预处理成 data/dict.sqlite
-tests/run_tests.py      自测（82 项；加 --tts 会联网测语音和 MP3）
+scripts/setup.sh        Mac 一键安装
+scripts/setup.ps1       Windows 一键安装（顺带建桌面、开始菜单快捷方式）
+scripts/build_mac_app.py  生成 Mac 快捷入口 川听.app
+scripts/make_ico.py     生成 Windows 图标 assets/chuanting.ico（在 Mac 上跑）
+tests/run_tests.py      自测（111 项；加 --tts 会联网测语音和 MP3）
 tests/test_sessions.py  练习范围、随机顺序、词数设置和分批完整性回归测试
 tests/session-flow.test.js  浏览器练习状态流回归（加载/保存重试、跨批次和结束统计）
 ```
 
-数据保存在 `~/Library/Application Support/川听/`（数据库、设置、语音缓存、导出的 MP3）。设置文件里有 API Key，权限是 600。
+数据保存在：Mac `~/Library/Application Support/川听/`，Windows `%APPDATA%\川听\`（数据库、设置、语音缓存、导出的 MP3）。后台运行的日志：Mac 在 `~/Library/Logs/川听.log`，Windows 在数据目录里的 `川听.log`。设置文件里有 API Key。
 
 ## 安装
 
-需要 macOS（语音拼接用到系统自带的 `afconvert`）和 Python 3.10 以上。
+需要 Python 3.10 以上。词典数据太大，没有放进仓库，安装脚本会自动下载（ECDICT，约 63MB）并生成 `data/dict.sqlite`，最后跑一遍自测。
+
+**Mac**
 
 ```bash
 git clone https://github.com/georageti/chuanting.git
@@ -82,7 +86,19 @@ cd chuanting
 bash scripts/setup.sh
 ```
 
-`setup.sh` 会建虚拟环境、装依赖（`requirements.txt`）、下载 ECDICT 词典（约 63MB）、生成 `data/dict.sqlite`，最后跑一遍自测。词典数据太大，没有放进仓库。
+**Windows 10 / 11**
+
+1. 到 [python.org](https://www.python.org/downloads/) 安装 Python，安装时勾选 **Add python.exe to PATH**。
+2. 下载本仓库（`git clone`，或者在 GitHub 页面点 Code → Download ZIP 并解压）。
+3. 在项目文件夹里右键 `scripts\setup.ps1`，选 **使用 PowerShell 运行**。或者在 PowerShell 里运行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
+```
+
+装完桌面和开始菜单里会出现“川听”。
+
+**说明**：Windows 版没有在真机上测试过。代码里已经去掉了只有 macOS 才有的工具（音频解码改用 miniaudio，离线语音改用系统自带的 SAPI），Python 部分和 Mac 共用同一套代码。遇到问题欢迎提 issue。
 
 ## 界面设计
 
