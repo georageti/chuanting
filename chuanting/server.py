@@ -148,6 +148,10 @@ def api_settings():
 def api_save_settings(patch: dict = Body(...)):
     if "session_size" in patch.get("study", {}):
         patch["study"]["session_size"] = session_size(patch["study"]["session_size"])
+    if "daily_new" in patch.get("study", {}):
+        daily = patch["study"]["daily_new"]
+        if isinstance(daily, bool) or not isinstance(daily, int) or not 0 <= daily <= 1000:
+            err("每天新词须为 0（不限）或 1–1000 的整数")
     # 网页上显示的是打码的 Key；没改就别覆盖
     for p in ("deepseek", "anthropic", "openai"):
         k = patch.get("ai", {}).get(p, {}).get("key")
@@ -422,19 +426,27 @@ async def api_generate(body: dict = Body(default={})):
     return {"warnings": warnings}
 
 
+def daily_new_quota(cfg: dict, limit: int | None) -> int | None:
+    """每日新词设为 0 时不限量，但仍遵守本轮剩余名额。"""
+    daily = cfg["study"]["daily_new"]
+    if daily == 0:
+        return limit
+    room = max(0, daily - store.learned_today())
+    return room if limit is None else min(limit, room)
+
+
 def pick_items(mode: str, limit: int | None) -> list[dict]:
     cfg = store.load_config()
     if mode == "review":
         return store.due_items(limit)
     if mode == "learn":
-        room = max(0, cfg["study"]["daily_new"] - store.learned_today())
-        return store.new_items(room if limit is None else min(limit, room))
+        return store.new_items(daily_new_quota(cfg, limit))
     if mode == "all":  # 生词本全部过一遍（不限当天）
         return store.list_items()[:limit]
     # mix：先复习到期的，再学新词
     due = store.due_items(limit)
-    room = max(0, cfg["study"]["daily_new"] - store.learned_today())
-    return due + store.new_items(room if limit is None else max(0, min(limit - len(due), room)))
+    remaining = None if limit is None else max(0, limit - len(due))
+    return due + store.new_items(daily_new_quota(cfg, remaining))
 
 
 def session_size(value) -> int:

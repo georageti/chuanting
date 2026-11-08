@@ -92,6 +92,37 @@ class SessionsTest(unittest.TestCase):
         self.assertEqual(self.post("/api/session/plan", keys=[])["total"], 0)
         self.assertEqual(self.post("/api/session", keys=[])["cards"], [])
 
+    def test_higher_daily_quotas_and_unlimited_after_learning_today(self):
+        keys = self.seed(260)
+        for key in keys[:55]:
+            store.record(key, 0, False, False)
+        for daily, expected in ((50, 0), (100, 45), (200, 145), (0, 205)):
+            self.post("/api/settings", study={"daily_new": daily})
+            stats = self.client.get("/api/stats").json()
+            self.assertEqual(stats["dailyNew"], daily)
+            self.assertEqual(stats["learnedToday"], 55)
+            plan = self.post("/api/session/plan", mode="learn", limit=0)
+            self.assertEqual(plan["total"], expected)
+            self.assertTrue(set(plan["keys"]) <= set(keys[55:]))
+        # 不限每日量时，每轮 100 仍只出 100；保存的不限值在重新读取后保留。
+        self.assertEqual(self.post("/api/session/plan", mode="learn", limit=100)["total"], 100)
+        self.assertEqual(store.load_config()["study"]["daily_new"], 0)
+
+    def test_unlimited_daily_new_respects_mixed_session_capacity(self):
+        self.seed(250, due=30, future=20)
+        self.post("/api/settings", study={"daily_new": 0})
+        for size, expected in ((20, 20), (100, 100), (200, 200), (0, 230)):
+            plan = self.post("/api/session/plan", mode="mix", limit=size)
+            self.assertEqual(plan["total"], expected)
+        self.assertEqual(self.post("/api/session/plan", mode="review", limit=0)["total"], 30)
+
+    def test_invalid_daily_quota_does_not_change_saved_settings(self):
+        self.post("/api/settings", study={"daily_new": 200})
+        for value in (-1, 1001, True, "unlimited", None, 2.5):
+            response = self.client.post("/api/settings", json={"study": {"daily_new": value}})
+            self.assertEqual(response.status_code, 400)
+            self.assertEqual(store.load_config()["study"]["daily_new"], 200)
+
     def test_batch_walk_covers_snapshot_once_despite_srs_changes(self):
         keys = self.seed(143, due=120)
         plan = self.post("/api/session/plan", mode="all")

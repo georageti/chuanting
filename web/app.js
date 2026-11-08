@@ -188,7 +188,7 @@ function drawChart(history) {
 async function loadHome() {
   const [s, cfg] = await Promise.all([api('/api/stats'), api('/api/settings')]);
   $('#session-size').value = String(cfg.study.session_size ?? 100);
-  const room = Math.max(0, (s.dailyNew ?? 20) - s.learnedToday);
+  const room = s.dailyNew === 0 ? s.new : Math.max(0, (s.dailyNew ?? 20) - s.learnedToday);
   const newToday = Math.min(s.new, room);
   roll($('#today-num'), s.due + newToday);
   $('#today-split').textContent = s.items ? `复习 ${s.due} 个 · 新词 ${newToday} 个 · 今天已练 ${s.today} 次` : '生词本还是空的，先去“文档”扫描一篇文章。';
