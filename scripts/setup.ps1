@@ -29,9 +29,9 @@ if (-not (Test-Path ".venv\Scripts\python.exe")) { & $py[0] $py[1..($py.Length -
 & .venv\Scripts\python.exe -m pip install -q --disable-pip-version-check -r requirements.txt
 if ($LASTEXITCODE -ne 0) { throw "依赖安装失败" }
 
-Step "3/5 下载 ECDICT 词典（约 63MB，MIT 许可）"
+Step "3/5 下载 ECDICT 词典（约 63MB，MIT 许可；下载包里已带词典库时跳过）"
 New-Item -ItemType Directory -Force "data\raw" | Out-Null
-if (-not (Test-Path "data\raw\ecdict.csv")) {
+if (-not (Test-Path "data\dict.sqlite") -and -not (Test-Path "data\raw\ecdict.csv")) {
   $ProgressPreference = "SilentlyContinue"
   Invoke-WebRequest -UseBasicParsing -Uri "https://raw.githubusercontent.com/skywind3000/ECDICT/master/ecdict.csv" -OutFile "data\raw\ecdict.csv.part"
   Move-Item "data\raw\ecdict.csv.part" "data\raw\ecdict.csv"

@@ -95,7 +95,11 @@ def main() -> None:
     exe = APP / "Contents/MacOS/chuanting"
     exe.write_text(LAUNCHER)
     exe.chmod(0o755)
-    build_icon(APP / "Contents/Resources/AppIcon.icns")
+    prebuilt = ROOT / "assets" / "chuanting.icns"
+    if prebuilt.exists():  # 仓库里带了现成图标，不需要 swiftc（没装 Xcode 命令行工具也能生成）
+        shutil.copy2(prebuilt, APP / "Contents/Resources/AppIcon.icns")
+    else:
+        build_icon(APP / "Contents/Resources/AppIcon.icns")
     with open(APP / "Contents/Info.plist", "wb") as f:
         plistlib.dump({
             "CFBundleName": "川听", "CFBundleDisplayName": "川听", "CFBundleIdentifier": "com.tigeorage.chuanting",

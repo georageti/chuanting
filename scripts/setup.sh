@@ -9,9 +9,9 @@ echo "== 1/4 建虚拟环境 .venv"
 [ -x .venv/bin/python ] || "$PY" -m venv .venv
 .venv/bin/pip install -q --disable-pip-version-check -r requirements.txt
 
-echo "== 2/4 下载 ECDICT 词典（约 63MB，MIT 许可）"
+echo "== 2/4 下载 ECDICT 词典（约 63MB，MIT 许可；下载包里已带词典库时跳过）"
 mkdir -p data/raw
-if [ ! -s data/raw/ecdict.csv ]; then
+if [ ! -s data/dict.sqlite ] && [ ! -s data/raw/ecdict.csv ]; then
   curl -fL --retry 3 -o data/raw/ecdict.csv.part https://raw.githubusercontent.com/skywind3000/ECDICT/master/ecdict.csv
   mv data/raw/ecdict.csv.part data/raw/ecdict.csv
 fi

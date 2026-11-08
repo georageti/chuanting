@@ -2,6 +2,13 @@
 
 扫描英文文档 → 识别生词和词组 → AI 给每个词编新的语境句并挖空 → 读给你听（空位“嘀”一声）→ 你拼写 → 按 FSRS 安排复习。
 
+## 下载
+
+[![下载 Mac 版](https://img.shields.io/badge/%E4%B8%8B%E8%BD%BD-Mac%20%E7%89%88-1f6b3a?style=for-the-badge)](https://github.com/georageti/chuanting/releases/latest/download/chuanting-mac.zip)
+[![下载 Windows 版](https://img.shields.io/badge/%E4%B8%8B%E8%BD%BD-Windows%20%E7%89%88-1f6b3a?style=for-the-badge)](https://github.com/georageti/chuanting/releases/latest/download/chuanting-windows.zip)
+
+下载后解压，打开里面的「先看我.txt」：先装 Python 3.10 以上，再双击「安装川听」（Mac 是 `.command`，Windows 是 `.bat`）。下载包里已经带好词典，不用再另外下载。所有版本见 [Releases](https://github.com/georageti/chuanting/releases)。
+
 ## 启动
 
 **Mac**：在“应用程序”里打开 **川听**，或者按 `⌘ 空格` 用 Spotlight 搜“川听”。打开后可以在程序坞里的图标上右键，选“选项 → 在程序坞中保留”。快捷入口用 `python3 -I scripts/build_mac_app.py --install` 生成（装到 `~/Applications/川听.app`），项目文件夹挪了位置要重新生成一次。也可以双击 `启动川听.command`。
