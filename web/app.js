@@ -186,7 +186,8 @@ function drawChart(history) {
 }
 
 async function loadHome() {
-  const s = await api('/api/stats');
+  const [s, cfg] = await Promise.all([api('/api/stats'), api('/api/settings')]);
+  $('#session-size').value = String(cfg.study.session_size ?? 100);
   const room = Math.max(0, (s.dailyNew ?? 20) - s.learnedToday);
   const newToday = Math.min(s.new, room);
   roll($('#today-num'), s.due + newToday);
@@ -200,6 +201,12 @@ async function loadHome() {
 }
 
 $$('#practice-home [data-mode]').forEach((b) => b.addEventListener('click', () => startSession(b.dataset.mode)));
+$('#session-size').addEventListener('change', async (e) => {
+  try {
+    await api('/api/settings', { json: { study: { session_size: Number(e.target.value) } } });
+    toast('已保存每轮词数', 1200);
+  } catch (err) { toast(err.message); }
+});
 
 $('#export-mp3').addEventListener('click', async () => {
   loading(true, '正在生成语境并合成语音，词多的话要等一两分钟…');
@@ -222,32 +229,48 @@ $('#export-mp3').addEventListener('click', async () => {
 });
 
 // ---------- 练习 ----------
-const P = { cards: [], i: 0, cur: null, results: [] };
+const P = { cards: [], i: 0, cur: null, results: [], keys: [], offset: 0, total: 0, skipped: [], token: 0, busy: false };
+
+async function prepareThrough(index, token) {
+  while (index >= P.cards.length && P.offset < P.keys.length) {
+    const keys = P.keys.slice(P.offset, P.offset + 20);
+    loading(true, `正在准备第 ${P.offset + 1}–${P.offset + keys.length} 个词的语境句（共 ${P.total} 个）…`);
+    const data = await api('/api/session', { json: { keys, ordered: true } });
+    if (token !== P.token) return;
+    // 只有成功后才前移；加载失败点“下一个”会重试同一批，不会漏词。
+    P.offset += keys.length;
+    P.cards.push(...data.cards);
+    P.skipped.push(...(data.skipped || []));
+    if (data.warnings?.length) toast(data.warnings.join('；'), 6000);
+  }
+}
 
 async function startSession(mode, keys) {
-  loading(true, '正在准备语境句…第一次练的词要让 AI 现编，稍等');
-  let data;
+  if (P.busy) return;
+  P.busy = true;
+  const token = ++P.token;
+  loading(true, '正在安排本轮练习…');
   try {
-    data = await api('/api/session', { json: { mode, limit: 20, keys } });
+    const plan = await api('/api/session/plan', { json: { mode, limit: Number($('#session-size').value), keys } });
+    if (token !== P.token) return;
+    if (!plan.keys.length) {
+      return toast(mode === 'review' ? '今天没有要复习的词；想多练可以选“全部过一遍”' : mode === 'learn' ? '没有新词了，或者今天的新词额度已用完' : '没有可练的词，可以去生词本选词练习');
+    }
+    Object.assign(P, { cards: [], i: 0, cur: null, results: [], keys: plan.keys, offset: 0,
+      total: plan.total, skipped: [], mode: plan.readMode || 'cloze' });
+    await prepareThrough(0, token);
+    if (token !== P.token) return;
+    showTab('practice');
+    $('#practice-home').hidden = true;
+    $('#practice-done').hidden = true;
+    $('#practice-run').hidden = false;
+    document.body.classList.add('is-focus');
+    if (P.cards.length) showCard(); else showDone();
   } catch (e) {
-    loading(false);
-    return toast(e.message);
+    toast(e.message);
+  } finally {
+    if (token === P.token) { P.busy = false; loading(false); }
   }
-  loading(false);
-  if (data.warnings?.length) toast(data.warnings.join('；'), 5000);
-  if (!data.cards.length) {
-    return toast(mode === 'review' ? '今天没有要复习的词' : mode === 'learn' ? '没有新词了，或者今天的新词额度已用完' : '生词本是空的，先去“文档”扫描一篇文章');
-  }
-  showTab('practice');
-  P.cards = data.cards;
-  try { P.mode = (await api('/api/settings')).study.read_mode || 'cloze'; } catch { P.mode = 'cloze'; }
-  P.i = 0;
-  P.results = [];
-  $('#practice-home').hidden = true;
-  $('#practice-done').hidden = true;
-  $('#practice-run').hidden = false;
-  document.body.classList.add('is-focus');
-  showCard();
 }
 
 function showCard() {
@@ -258,8 +281,11 @@ function showCard() {
   void card.offsetWidth;
   card.classList.add('swap');
   P.cur = { card: c, mistakes: 0, peeked: false, hinted: false, done: false };
-  $('#bar').style.width = `${(P.i / P.cards.length) * 100}%`;
-  $('#count').textContent = `${P.i + 1} / ${P.cards.length}`;
+  $('#bar').style.width = `${(P.results.length / P.total) * 100}%`;
+  $('#count').textContent = `${P.i + 1} / ${P.total}${P.skipped.length ? ` · ${P.skipped.length} 个暂无法出题` : ''}`;
+  $('#next').disabled = false;
+  $('#known-btn').disabled = false;
+  $('#next').textContent = '下一个';
   const isSentence = c.kind === 'sentence';
   $('#c-kind').textContent = isSentence ? '句子' : c.kind === 'phrase' ? '词组' : '单词';
   $('#c-level').textContent = c.levelName || '';
@@ -367,6 +393,10 @@ function checkAnswer() {
 
 async function finish(correct) {
   const st = P.cur;
+  if (!st || st.saving || st.saved) return;
+  const token = P.token;
+  st.saving = true;
+  st.correct = correct;
   st.done = true;
   if (!correct) st.peeked = st.peeked || st.mistakes < 3;
   const c = st.card;
@@ -390,31 +420,56 @@ async function finish(correct) {
   $('#give-up-row').hidden = true;
   $('#keys').innerHTML = '<kbd>↵</kbd> 下一个　<kbd>Esc</kbd> 重听';
   for (const id of ['c-text', 'c-zh', 'c-first']) $('#' + id).hidden = true;
-  $('#next').focus();
+  $('#next').disabled = true;
+  $('#known-btn').disabled = true;
+  $('#next').textContent = '正在保存…';
   try {
     const r = await api('/api/review', { json: { key: c.key, ctxId: c.ctxId, mistakes: st.mistakes, peeked: st.peeked, hinted: st.hinted } });
+    if (token !== P.token) return;
     P.results.push({ key: c.key, correct, grade: r.grade, due: r.state.due });
+    st.saved = true;
+    $('#next').textContent = '下一个';
   } catch (e) {
-    toast(e.message);
+    if (token !== P.token) return;
+    $('#next').textContent = '重试保存';
+    toast(`练习记录尚未保存：${e.message}。请重试。`, 5000);
+  } finally {
+    st.saving = false;
+    if (token === P.token) { $('#next').disabled = false; $('#known-btn').disabled = !st.saved; $('#next').focus(); }
   }
-  Audio_.say(c.sentence);
+  if (token === P.token) Audio_.say(c.sentence);
 }
 
-function nextCard() {
+async function nextCard() {
+  if (P.busy || !P.cur?.done || P.cur.saving) return;
+  if (!P.cur.saved) return finish(P.cur.correct);
+  const token = P.token;
+  P.busy = true;
+  $('#next').disabled = true;
   Audio_.stop();
-  P.i++;
-  if (P.i >= P.cards.length) return showDone();
-  showCard();
+  try {
+    const next = P.i + 1;
+    await prepareThrough(next, token);
+    if (token !== P.token) return;
+    P.i = next;
+    if (P.i >= P.cards.length) showDone(); else showCard();
+  } catch (e) {
+    if (token === P.token) { $('#next').textContent = '重试加载下一批'; toast(e.message); }
+  } finally {
+    if (token === P.token) { P.busy = false; loading(false); $('#next').disabled = false; }
+  }
 }
 
 function showDone() {
   $('#practice-run').hidden = true;
   $('#practice-done').hidden = false;
+  $('#practice-done h1').textContent = P.skipped.length ? '本轮练习已结束' : '这一轮练完了';
   document.body.classList.remove('is-focus');
   const right = P.results.filter((r) => r.grade === 3).length;
   const wrong = P.results.filter((r) => r.grade === 1);
-  $('#done-summary').innerHTML = `<p>这一轮练了 <b>${P.results.length}</b> 个，一次拼对 <b>${right}</b> 个。</p>` +
-    (wrong.length ? `<p class="muted">没拼出来的：${wrong.map((r) => esc(r.key)).join('、')}。明天会再出现。</p>` : '');
+  $('#done-summary').innerHTML = `<p>本轮计划 <b>${P.total}</b> 个，实际练了 <b>${P.results.length}</b> 个，一次拼对 <b>${right}</b> 个。</p>` +
+    (wrong.length ? `<p class="muted">没拼出来的：${wrong.map((r) => esc(r.key)).join('、')}。明天会再出现。</p>` : '') +
+    (P.skipped.length ? `<p class="muted">未练到 ${P.skipped.length} 个（词条已移除或没有可用语境句）：${P.skipped.map(esc).join('、')}。可在生词本重新生成语境句后再练。</p>` : '');
 }
 
 $('#answer-form').addEventListener('submit', (e) => { e.preventDefault(); checkAnswer(); });
@@ -422,7 +477,7 @@ $('#next').addEventListener('click', nextCard);
 $('#play').addEventListener('click', () => P.cur && Audio_.playCloze(P.cur.card));
 $('#slow').addEventListener('click', () => P.cur && Audio_.playCloze(P.cur.card, true));
 $('#give-up').addEventListener('click', giveUp);
-$('#quit').addEventListener('click', () => { Audio_.stop(); document.body.classList.remove('is-focus'); $('#practice-run').hidden = true; $('#practice-home').hidden = false; loadHome(); });
+$('#quit').addEventListener('click', () => { P.token++; P.busy = false; P.cur = null; loading(false); Audio_.stop(); document.body.classList.remove('is-focus'); $('#practice-run').hidden = true; $('#practice-home').hidden = false; loadHome(); });
 $('#back-home').addEventListener('click', () => { $('#practice-done').hidden = true; $('#practice-home').hidden = false; loadHome(); });
 for (const [btn, el] of [['show-text', 'c-text'], ['show-zh', 'c-zh'], ['show-first', 'c-first']]) {
   $('#' + btn).addEventListener('click', () => {
@@ -438,10 +493,17 @@ for (const [btn, el] of [['show-text', 'c-text'], ['show-zh', 'c-zh'], ['show-fi
 }
 $('#known-btn').addEventListener('click', async () => {
   const c = P.cur?.card;
-  if (!c) return;
-  await api('/api/known', { json: { key: c.key, on: true } });
-  toast(`“${c.key}”标为已会，以后不再出现`);
-  nextCard();
+  if (!c || P.busy || !P.cur.saved) return;
+  const token = P.token;
+  P.busy = true;
+  try {
+    await api('/api/known', { json: { key: c.key, on: true } });
+    if (token !== P.token) return;
+    toast(`“${c.key}”标为已会，以后不再出现`);
+    P.busy = false;
+    await nextCard();
+  } catch (e) { toast(e.message); }
+  finally { if (token === P.token) P.busy = false; }
 });
 document.addEventListener('keydown', (e) => {
   if ($('#practice-run').hidden) return;
@@ -855,8 +917,7 @@ function renderWords() {
     : `<div class="empty-row">${WORDS.length ? '没有匹配的词。' : '生词本是空的。去“文档”扫描一篇文章，把生词勾选进来。'}</div>`;
   $$('[data-drill-group]').forEach((b) => b.addEventListener('click', () => {
     const keys = WORD_GROUPS[+b.dataset.drillGroup][1].map((w) => w.key);
-    if (keys.length > 30) toast(`这组有 ${keys.length} 个，先练前 30 个`);
-    startSession('all', keys.slice(0, 30));
+    startSession('all', keys);
   }));
   $$('#word-list .w-row').forEach((row) => {
     row.addEventListener('click', () => toggleWord(row));
@@ -925,9 +986,10 @@ const FIELDS = {
   's-per': ['ai', 'per_item'], 's-voice': ['tts', 'voice'], 's-rate': ['tts', 'rate'], 's-pause': ['study', 'pause_ms'],
   's-level': ['filter', 'hide_level'], 's-rank': ['filter', 'hide_rank'], 's-daily': ['study', 'daily_new'],
   's-readmode': ['study', 'read_mode'],
+  's-session': ['study', 'session_size'],
   's-phrases': ['extract', 'phrases'],
 };
-const NUMERIC = new Set(['s-per', 's-pause', 's-rank', 's-daily']);
+const NUMERIC = new Set(['s-per', 's-pause', 's-rank', 's-daily', 's-session']);
 const getPath = (o, p) => p.reduce((x, k) => x?.[k], o);
 const patchOf = (p, v) => p.reduceRight((acc, k) => ({ [k]: acc }), v);
 

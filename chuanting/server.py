@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import random
 import re
 import time
 from datetime import datetime, timezone
@@ -66,7 +67,8 @@ def make_card(item: dict, ctx: dict) -> dict | None:
 async def ensure_contexts(items: list[dict], cfg: dict) -> list[str]:
     """没有语境句的词先生成；AI 出错或没给出合格句子时，用原文句子兜底"""
     warnings: list[str] = []
-    missing = [it for it in items if not store.contexts_of(it["key"])]
+    missing = [it for it in items if not any(ai.make_cloze(c["sentence"], c["answer"])
+                                            for c in store.contexts_of(it["key"]))]
     for it in [m for m in missing if m["kind"] == "sentence"]:
         store.add_contexts(it["key"], [{"sentence": it["key"], "answer": [it["key"]], "hint": it["translation"],
                                         "note": "整句听写"}], "sentence")
@@ -144,6 +146,8 @@ def api_settings():
 
 @app.post("/api/settings")
 def api_save_settings(patch: dict = Body(...)):
+    if "session_size" in patch.get("study", {}):
+        patch["study"]["session_size"] = session_size(patch["study"]["session_size"])
     # 网页上显示的是打码的 Key；没改就别覆盖
     for p in ("deepseek", "anthropic", "openai"):
         k = patch.get("ai", {}).get(p, {}).get("key")
@@ -418,37 +422,72 @@ async def api_generate(body: dict = Body(default={})):
     return {"warnings": warnings}
 
 
-def pick_items(mode: str, limit: int) -> list[dict]:
+def pick_items(mode: str, limit: int | None) -> list[dict]:
     cfg = store.load_config()
     if mode == "review":
         return store.due_items(limit)
     if mode == "learn":
         room = max(0, cfg["study"]["daily_new"] - store.learned_today())
-        return store.new_items(min(limit, room) if room else 0)
+        return store.new_items(room if limit is None else min(limit, room))
     if mode == "all":  # 生词本全部过一遍（不限当天）
-        return [store.get_item(r["key"]) for r in store.q("SELECT key FROM items ORDER BY added DESC LIMIT ?", (limit,))]
+        return store.list_items()[:limit]
     # mix：先复习到期的，再学新词
     due = store.due_items(limit)
     room = max(0, cfg["study"]["daily_new"] - store.learned_today())
-    return due + store.new_items(max(0, min(limit - len(due), room)))
+    return due + store.new_items(room if limit is None else max(0, min(limit - len(due), room)))
+
+
+def session_size(value) -> int:
+    """0 表示本轮不限量；每天新词额度单独计算。"""
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 1000:
+        err("每轮词数须为 0（全部）或 1–1000 的整数")
+    return value
+
+
+def session_items(body: dict, cfg: dict) -> list[dict]:
+    mode = body.get("mode", "mix")
+    if mode not in {"mix", "review", "learn", "all"}:
+        err("未知的练习方式")
+    keys = body.get("keys")
+    if keys is not None:
+        if not isinstance(keys, list) or any(not isinstance(k, str) for k in keys):
+            err("词条列表格式不正确")
+        items = [it for k in dict.fromkeys(keys) if (it := store.get_item(k))]
+    else:
+        size = session_size(body.get("limit", cfg["study"]["session_size"]))
+        # “全部过一遍”始终覆盖全本，不受旧客户端传来的 limit 或每日新词额度限制。
+        items = pick_items(mode, None if mode == "all" or size == 0 else size)
+    if keys is None or not body.get("ordered", False):
+        random.shuffle(items)
+    return items
+
+
+@app.post("/api/session/plan")
+def api_session_plan(body: dict = Body(default={})):
+    """固定本轮范围和随机顺序；语境句由客户端分批请求，避免一次等全本生成。"""
+    cfg = store.load_config()
+    keys = [it["key"] for it in session_items(body, cfg)]
+    return {"keys": keys, "total": len(keys), "readMode": cfg["study"]["read_mode"]}
 
 
 @app.post("/api/session")
 async def api_session(body: dict = Body(default={})):
-    mode = body.get("mode", "mix")
-    limit = max(1, min(100, int(body.get("limit", 20))))
-    items = [i for i in pick_items(mode, limit) if i]
-    if body.get("keys"):
-        items = [i for i in (store.get_item(k) for k in body["keys"]) if i]
-    warnings = await ensure_contexts(items, store.load_config())
+    cfg = store.load_config()
+    items = session_items(body, cfg)
+    warnings = await ensure_contexts(items, cfg)
     cards = []
     for it in items:
-        ctxs = store.contexts_of(it["key"])
-        if ctxs:
-            card = make_card(it, ctxs[0])
+        for ctx in store.contexts_of(it["key"]):
+            card = make_card(it, ctx)
             if card:
                 cards.append(card)
-    return {"cards": cards, "warnings": warnings}
+                break
+    prepared = {c["key"] for c in cards}
+    requested = body.get("keys") if body.get("keys") is not None else [it["key"] for it in items]
+    skipped = [key for key in dict.fromkeys(requested) if key not in prepared]
+    if skipped:
+        warnings.append(f"有 {len(skipped)} 个词暂时无法出题，结束时会列出，未计入已练词数")
+    return {"cards": cards, "warnings": warnings, "skipped": skipped}
 
 
 @app.post("/api/review")

@@ -31,7 +31,7 @@ DEFAULT_CONFIG = {
     "filter": {"hide_level": "gk", "hide_rank": 2000},
     "extract": {"phrases": "ai"},  # 词组识别：ai（用设置里的 AI，没法用时退回词典）/ dict（只用词典）
     # read_mode 朗读方式：cloze 挖空（嘀一声，不显示句子）/ show 显示句子（嘀一声，显示挖空句）/ full 读全（读完整句，显示挖空句）
-    "study": {"daily_new": 20, "pause_ms": 3000, "read_mode": "cloze"},
+    "study": {"daily_new": 20, "session_size": 100, "pause_ms": 3000, "read_mode": "cloze"},
 }
 
 SCHEMA = """
@@ -269,7 +269,7 @@ def mark_used(ctx_id: int) -> None:
 
 # ---------- 复习 ----------
 
-def due_items(limit: int = 50) -> list[dict]:
+def due_items(limit: int | None = 50) -> list[dict]:
     day = srs.today()
     rows = [_item_row(r) for r in q("SELECT * FROM items WHERE state IS NOT NULL")]
     due = [r for r in rows if r["state"]["due"] <= day]
@@ -277,8 +277,9 @@ def due_items(limit: int = 50) -> list[dict]:
     return due[:limit]
 
 
-def new_items(limit: int = 20) -> list[dict]:
-    return [_item_row(r) for r in q("SELECT * FROM items WHERE state IS NULL ORDER BY added LIMIT ?", (limit,))]
+def new_items(limit: int | None = 20) -> list[dict]:
+    return [_item_row(r) for r in q("SELECT * FROM items WHERE state IS NULL ORDER BY added LIMIT ?",
+                                  (-1 if limit is None else limit,))]
 
 
 def learned_today() -> int:
