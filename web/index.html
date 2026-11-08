@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="zh-CN" data-radius="soft" data-buttons="arrow" data-ground="sand">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>川听：听语境，拼单词</title>
+<meta name="description" content="扫描英文文档里的生词和词组，AI 编新的语境句读给你听，你把空着的词拼出来。">
+<meta name="theme-color" content="#f6f4f4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%231f6b3a'/%3E%3Crect x='5' y='6' width='14' height='3.4' rx='1.7' fill='white'/%3E%3Crect x='5' y='10.3' width='9.8' height='3.4' rx='1.7' fill='white'/%3E%3Crect x='5' y='14.6' width='5.6' height='3.4' rx='1.7' fill='white'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="fonts/fonts.css">
+<link rel="stylesheet" href="app.css">
+<!-- 设计：沿用川 Studio 主页的系统（taste-skill）。配色 mint-pink-accounts 的绿色主色，字体 Funnel Display / Funnel Sans / DM Mono，
+     圆角 soft，按钮 arrow；视觉氛围按用户给的“朦胧柔焦美”参考：低饱和粉蓝光晕、磨砂玻璃、颗粒噪点、叠影、对焦和运动模糊。素材：taste-skill UI 片段 voice（波形）、stat（柱状图）；react-bits 的 DecryptedText、CountUp 改写成原生 JS。 -->
+</head>
+<body>
+<a class="skip-link" href="#main">跳到正文</a>
+<nav class="side" id="tabs" aria-label="主导航">
+  <div class="logo"><span class="mark" aria-hidden="true"></span>川听</div>
+  <button data-tab="practice" class="active"><i data-i="headphones"></i><span>练习</span></button>
+  <button data-tab="docs"><i data-i="file-text"></i><span>文档</span></button>
+  <button data-tab="words"><i data-i="book-open"></i><span>生词本</span></button>
+  <button data-tab="settings"><i data-i="settings"></i><span>设置</span></button>
+  <div class="side__foot" id="side-foot"></div>
+</nav>
+
+<main id="main">
+  <!-- 练习 -->
+  <section id="practice" class="page active">
+    <div id="practice-home">
+      <header class="page-head">
+        <h1>今天的听写 <span class="muted" id="home-sub"></span></h1>
+      </header>
+
+      <div class="stage enter" data-enter>
+        <div class="ui-panel today">
+          <div class="today__main">
+            <div class="today__label">今天要练</div>
+            <div class="today__num"><span class="roll" id="today-num">0</span><span class="today__unit">个</span></div>
+            <div class="today__split" id="today-split"></div>
+            <div class="btn-row">
+              <button class="btn btn--primary" data-mode="mix">开始今日练习<svg class="m-arrow" viewBox="0 0 12 12" aria-hidden="true"><path class="m-arrow__stem" d="M1 6h8"/><path class="m-arrow__head" d="M4.5 2.5 8 6l-3.5 3.5"/></svg></button>
+            </div>
+          </div>
+          <div class="ui-stat today__chart">
+            <div class="ui-stat__top">
+              <span class="ui-stat__label">最近 14 天练习次数</span>
+              <span class="ui-stat__range" id="chart-total"></span>
+            </div>
+            <svg class="ui-stat__svg" id="chart" viewBox="0 0 400 120" preserveAspectRatio="none" aria-hidden="true"></svg>
+            <div class="ui-stat__axis" id="chart-axis" aria-hidden="true"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="cards">
+        <button class="card" data-mode="review">
+          <i data-i="refresh-cw"></i>
+          <b>只复习</b><span class="card__num roll" id="n-due">0</span>
+          <span class="card__line">按记忆曲线今天到期的词</span>
+        </button>
+        <button class="card" data-mode="learn">
+          <i data-i="sparkles"></i>
+          <b>只学新词</b><span class="card__num roll" id="n-new">0</span>
+          <span class="card__line">生词本里还没练过的词</span>
+        </button>
+        <button class="card" data-mode="all">
+          <i data-i="book-open"></i>
+          <b>全部过一遍</b><span class="card__num roll" id="n-all">0</span>
+          <span class="card__line">生词本里的词，每次最多 20 个</span>
+        </button>
+        <button class="card" id="export-mp3">
+          <i data-i="download"></i>
+          <b>导出听力包</b><span class="card__num">MP3</span>
+          <span class="card__line">挖空句、停顿、答案拼读、原句、中文</span>
+        </button>
+      </div>
+      <p class="hint-line">听到“嘀”的地方就是要填的词。<kbd>Enter</kbd> 提交，<kbd>Esc</kbd> 重听。</p>
+    </div>
+
+    <div id="practice-run" hidden>
+      <div class="run-top">
+        <button class="link link--back" id="quit">结束练习</button>
+        <div class="progress" role="progressbar" aria-label="进度"><div id="bar"></div></div>
+        <span id="count" class="muted mono"></span>
+      </div>
+      <div class="stage stage--run">
+        <div class="ui-panel drill" id="card">
+          <div class="drill__meta"><span id="c-kind" class="chip"></span><span id="c-level" class="chip chip--plain"></span><span id="c-new" class="chip chip--accent" hidden>新词</span></div>
+
+          <div class="player" id="player">
+            <button class="player__btn" id="play" aria-label="重听（Esc）"><i data-i="play"></i></button>
+            <span class="player__wave" aria-hidden="true" id="wave"></span>
+          </div>
+
+          <div class="tools">
+            <button class="tool" id="slow"><i data-i="turtle"></i>慢速</button>
+            <button class="tool" id="show-text"><i data-i="eye"></i>显示句子</button>
+            <button class="tool" id="show-zh"><i data-i="languages"></i>中文提示</button>
+            <button class="tool" id="show-first"><i data-i="type"></i>首字母</button>
+          </div>
+          <p id="c-text" class="sentence" hidden></p>
+          <p id="c-zh" class="zh" hidden></p>
+          <p id="c-first" class="zh mono" hidden></p>
+
+          <form id="answer-form" autocomplete="off">
+            <label class="sr" for="answer">听到“嘀”的地方是什么</label>
+            <textarea id="answer" rows="1" placeholder="输入听到的词" spellcheck="false" autocapitalize="off" autocorrect="off"></textarea>
+            <button class="btn btn--primary" id="check">提交</button>
+          </form>
+          <p class="keys" id="keys"><kbd>↵</kbd> 提交　<kbd>⇧</kbd><kbd>↵</kbd> 不会　<kbd>Esc</kbd> 重听</p>
+          <div id="feedback" class="feedback" aria-live="polite"></div>
+
+          <div id="reveal" hidden>
+            <p class="sentence full" id="r-sentence"></p>
+            <p class="zh" id="r-zh"></p>
+            <div class="def">
+              <div><b id="r-key"></b> <span id="r-ph" class="muted mono"></span></div>
+              <div id="r-tr" class="def__tr"></div>
+              <div id="r-note" class="def__note"></div>
+            </div>
+            <div class="btn-row btn-row--end">
+              <button class="btn btn--secondary" id="known-btn">这个我会了，不再练</button>
+              <button class="btn btn--primary" id="next">下一个<svg class="m-arrow" viewBox="0 0 12 12" aria-hidden="true"><path class="m-arrow__stem" d="M1 6h8"/><path class="m-arrow__head" d="M4.5 2.5 8 6l-3.5 3.5"/></svg></button>
+            </div>
+          </div>
+          <div class="btn-row btn-row--end" id="give-up-row">
+            <button class="link" id="give-up">不会，看答案 <kbd>⇧</kbd><kbd>↵</kbd></button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="practice-done" hidden>
+      <header class="page-head"><h1>这一轮练完了</h1></header>
+      <div class="ui-panel done" id="done-summary"></div>
+      <div class="btn-row"><button class="btn btn--primary" id="back-home">回到今天的听写</button></div>
+    </div>
+  </section>
+
+  <!-- 文档 -->
+  <section id="docs" class="page">
+    <div id="doc-home">
+      <header class="page-head"><h1>扫描文档 <span class="muted">找出生词和词组。</span></h1></header>
+      <div class="stage">
+        <div class="ui-panel drop" id="drop">
+          <input type="file" id="file" accept=".docx,.txt,.md,.markdown" hidden>
+          <div class="drop__files" aria-hidden="true">
+            <img src="icons/docx.svg" alt="" width="40" height="40"><img src="icons/md.svg" alt="" width="40" height="40"><img src="icons/txt.svg" alt="" width="40" height="40">
+          </div>
+          <div class="drop__text">
+            <b>把 Word、Markdown 或 TXT 文件拖到这里</b>
+            <span class="muted">也可以 <button class="link" id="pick">选择文件</button>，或者在下面粘贴英文</span>
+          </div>
+          <label class="sr" for="paste">粘贴英文</label>
+          <textarea id="paste" placeholder="粘贴一段英文文章"></textarea>
+          <div class="btn-row btn-row--end"><button class="btn btn--primary" id="scan">扫描生词<svg class="m-arrow" viewBox="0 0 12 12" aria-hidden="true"><path class="m-arrow__stem" d="M1 6h8"/><path class="m-arrow__head" d="M4.5 2.5 8 6l-3.5 3.5"/></svg></button></div>
+        </div>
+      </div>
+      <h2 class="group-title">扫描过的文档</h2>
+      <div class="list" id="doc-list"></div>
+    </div>
+
+    <div id="doc-view" hidden>
+      <div class="run-top"><button class="link link--back" id="doc-back">文档列表</button></div>
+      <header class="page-head"><h1 id="doc-title"></h1></header>
+      <div class="doc-summary"><p class="muted" id="doc-summary"></p><button class="text-btn" id="rescan"><i data-i="sparkles"></i>用 AI 重新分析</button></div>
+      <div class="seg doc-tabs" role="tablist" aria-label="文档视图">
+        <button role="tab" data-view="cands" class="on" aria-selected="true">生词</button>
+        <button role="tab" data-view="sents" aria-selected="false">逐句解析</button>
+      </div>
+      <div id="view-cands">
+      <div class="filters">
+        <label>隐藏 <select id="f-level"></select> 及更简单的词</label>
+        <label>隐藏最常用的 <select id="f-rank"><option value="0">0</option><option value="1000">1000</option><option value="2000">2000</option><option value="3000">3000</option><option value="5000">5000</option><option value="8000">8000</option></select> 个词</label>
+        <label class="check"><input type="checkbox" id="f-all"> 显示全部</label>
+      </div>
+      <div id="cands"></div>
+      <div class="bottom-bar" id="add-bar">
+        <label class="check"><input type="checkbox" id="sel-all" checked> 全选</label>
+        <span id="sel-count" class="muted"></span>
+        <button class="btn btn--primary" id="add-items">加入生词本</button>
+      </div>
+      </div>
+      <div id="view-sents" hidden>
+        <p class="pick-hint" id="pick-hint"></p>
+        <div id="sents"></div>
+        <div class="bottom-bar" id="pick-bar">
+          <span id="pick-count" class="muted"></span>
+          <button class="btn btn--primary" id="pick-add">加入生词本</button>
+        </div>
+      </div>
+      <button class="pick-pop" id="pick-pop" hidden><i data-i="sparkles"></i><span id="pick-pop-text"></span></button>
+    </div>
+  </section>
+
+  <!-- 生词本 -->
+  <section id="words" class="page">
+    <header class="page-head"><h1>生词本 <span class="muted" id="words-sub"></span></h1></header>
+    <div class="toolbar">
+      <label class="search"><i data-i="search"></i><span class="sr">搜索生词</span><input id="w-search" placeholder="搜索单词、句子或中文"></label>
+      <label class="group-sel"><span class="sr">分组</span><select id="w-group">
+        <option value="time">按添加时间分组</option><option value="doc">按来源文档分组</option>
+        <option value="kind">按类型分组</option><option value="none">不分组</option>
+      </select></label>
+      <button class="btn btn--secondary" id="gen-all">为没有语境的词生成句子</button>
+      <a class="btn btn--secondary" href="/api/export/wordbook">导出到川词</a>
+    </div>
+    <div class="list" id="word-list"></div>
+    <h2 class="group-title">已会的词 <span class="muted" id="known-count"></span></h2>
+    <div class="known-list" id="known-list"></div>
+  </section>
+
+  <!-- 设置 -->
+  <section id="settings" class="page">
+    <header class="page-head"><h1>设置</h1></header>
+    <h2 class="group-title">AI 编语境句</h2>
+    <div class="list form">
+      <div class="row row--wrap"><span class="row__k">来源</span>
+        <div class="seg" id="s-provider" role="radiogroup" aria-label="AI 来源">
+          <button data-v="deepseek" role="radio"><img src="icons/deepseek.svg" alt="" width="20" height="15">DeepSeek</button>
+          <button data-v="anthropic" role="radio"><img src="icons/claude.svg" alt="" width="16" height="16">Claude</button>
+          <button data-v="openai" role="radio">其他接口</button>
+          <button data-v="original" role="radio">不用 AI</button>
+        </div>
+      </div>
+      <div class="prov" data-p="deepseek">
+        <label class="row"><span class="row__k">API Key</span><input id="s-ds-key" type="password" placeholder="sk-…"></label>
+        <label class="row"><span class="row__k">模型</span><input id="s-ds-model"></label>
+        <label class="row"><span class="row__k">接口地址</span><input id="s-ds-base"></label>
+      </div>
+      <div class="prov" data-p="anthropic">
+        <label class="row"><span class="row__k">API Key</span><input id="s-an-key" type="password" placeholder="sk-ant-…"></label>
+        <label class="row"><span class="row__k">模型</span><input id="s-an-model"></label>
+        <p class="row-note">国内调用 Claude 需要开代理。</p>
+      </div>
+      <div class="prov" data-p="openai">
+        <label class="row"><span class="row__k">API Key</span><input id="s-oa-key" type="password"></label>
+        <label class="row"><span class="row__k">模型</span><input id="s-oa-model" placeholder="如 moonshot-v1-8k、qwen-plus"></label>
+        <label class="row"><span class="row__k">接口地址</span><input id="s-oa-base" placeholder="如 https://api.moonshot.cn/v1"></label>
+      </div>
+      <div class="prov" data-p="original">
+        <p class="row-note">不调用 AI，直接把文档里的原句挖空来练。</p>
+      </div>
+      <label class="row"><span class="row__k">每个词几句</span><select id="s-per"><option>1</option><option>2</option><option>3</option></select></label>
+      <div class="row"><button class="btn btn--secondary btn--sm" id="s-test">测试连接</button><span id="s-test-out" class="muted"></span></div>
+    </div>
+
+    <h2 class="group-title">分析文档</h2>
+    <div class="list form">
+      <label class="row"><span class="row__k">分析方式</span><select id="s-phrases">
+        <option value="ai">AI 逐句分析（推荐）</option><option value="dict">只用词典</option>
+      </select></label>
+      <p class="row-note">AI 逐句读懂文章：给出每句的中文翻译，认出词典里没有的短语、习语和搭配，难词和多义词按这句里的意思解释。用的是上面选的 AI，一篇文章调用几次。只用词典时，词典里没有的短语认不出来。</p>
+    </div>
+
+    <h2 class="group-title">朗读</h2>
+    <div class="list form">
+      <label class="row"><span class="row__k">声音</span><select id="s-voice">
+        <option value="en-US-AriaNeural">美音 · Aria（女）</option>
+        <option value="en-US-JennyNeural">美音 · Jenny（女）</option>
+        <option value="en-US-AvaNeural">美音 · Ava（女）</option>
+        <option value="en-US-AndrewNeural">美音 · Andrew（男）</option>
+        <option value="en-US-GuyNeural">美音 · Guy（男）</option>
+        <option value="en-GB-SoniaNeural">英音 · Sonia（女）</option>
+        <option value="en-GB-LibbyNeural">英音 · Libby（女）</option>
+        <option value="en-GB-RyanNeural">英音 · Ryan（男）</option>
+      </select></label>
+      <label class="row"><span class="row__k">语速</span><select id="s-rate">
+        <option value="-20%">慢</option><option value="-10%">稍慢</option><option value="-5%">适中</option><option value="+0%">正常</option><option value="+10%">稍快</option>
+      </select></label>
+      <label class="row"><span class="row__k">朗读方式</span><select id="s-readmode">
+        <option value="cloze">挖空：空位“嘀”一声，不显示句子</option>
+        <option value="show">显示句子：空位“嘀”一声，显示挖空句</option>
+        <option value="full">读全：读完整句，显示挖空句</option>
+      </select></label>
+      <p class="row-note">练习和导出的 MP3 都按这里读。“显示句子”是你选的方式，不算看提示，不影响复习评分。</p>
+      <label class="row"><span class="row__k">MP3 里的停顿</span><select id="s-pause">
+        <option value="2000">2 秒</option><option value="3000">3 秒</option><option value="4000">4 秒</option><option value="6000">6 秒</option>
+      </select></label>
+    </div>
+
+    <h2 class="group-title">筛词和每日量</h2>
+    <div class="list form">
+      <label class="row"><span class="row__k">默认隐藏</span><select id="s-level"></select></label>
+      <label class="row"><span class="row__k">隐藏最常用</span><select id="s-rank"><option value="0">不隐藏</option><option value="1000">前 1000 个</option><option value="2000">前 2000 个</option><option value="3000">前 3000 个</option><option value="5000">前 5000 个</option></select></label>
+      <label class="row"><span class="row__k">每天新词</span><select id="s-daily"><option value="10">10 个</option><option value="20">20 个</option><option value="30">30 个</option><option value="50">50 个</option></select></label>
+    </div>
+    <h2 class="group-title">川听</h2>
+    <div class="list form">
+      <div class="row"><span class="row__k">后台服务</span><span class="muted quit-note">从程序坞或 Spotlight 打开的川听在后台运行，用完可以在这里关掉。</span><button class="text-btn danger" id="quit-app">关闭川听</button></div>
+    </div>
+    <p class="foot">数据保存在 ~/Library/Application Support/川听/。词典来自 ECDICT（MIT），语音来自微软 Edge 朗读。图标：DeepSeek、Claude 为其所有者的商标。</p>
+  </section>
+</main>
+
+<div class="toast" id="toast" role="status"></div>
+<div class="loading" id="loading" hidden><div class="spinner"></div><span id="loading-text">处理中…</span></div>
+<script src="app.js"></script>
+</body>
+</html>

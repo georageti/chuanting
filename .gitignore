@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+.preview-home/
+dist/
+# 词典数据：由 scripts/setup.sh 下载和生成
+data/raw/ecdict.csv
+data/raw/*.part
+data/dict.sqlite
