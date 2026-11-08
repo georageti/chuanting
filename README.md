@@ -4,8 +4,8 @@
 
 ## 下载
 
-[![下载 Mac 版](https://img.shields.io/badge/%E4%B8%8B%E8%BD%BD-Mac%20%E7%89%88-1f6b3a?style=for-the-badge)](https://github.com/georageti/chuanting/releases/latest/download/chuanting-mac.zip)
-[![下载 Windows 版](https://img.shields.io/badge/%E4%B8%8B%E8%BD%BD-Windows%20%E7%89%88-1f6b3a?style=for-the-badge)](https://github.com/georageti/chuanting/releases/latest/download/chuanting-windows.zip)
+[![下载 Mac 版](assets/btn-mac.svg)](https://github.com/georageti/chuanting/releases/latest/download/chuanting-mac.zip)
+[![下载 Windows 版](assets/btn-windows.svg)](https://github.com/georageti/chuanting/releases/latest/download/chuanting-windows.zip)
 
 下载后解压，打开里面的「先看我.txt」：先装 Python 3.10 以上，再双击「安装川听」（Mac 是 `.command`，Windows 是 `.bat`）。下载包里已经带好词典，不用再另外下载。所有版本见 [Releases](https://github.com/georageti/chuanting/releases)。
 
