@@ -95,3 +95,13 @@ bash scripts/setup.sh
 - 语音：[edge-tts](https://github.com/rany2/edge-tts)（微软 Edge 朗读服务）；连不上时退回 macOS 自带的 `say`
 - 动效参考：[React Bits](https://reactbits.dev)（DecryptedText、CountUp）
 - 思路参考：LuteOrg/lute-v3（多词词组匹配）、vocabsieve（已会词过滤）、tomato-vocast（留停顿让你先猜）、podcastfy（大模型写稿再合成语音）
+
+## 许可证
+
+川听的代码以 [MIT 许可证](LICENSE) 发布。
+
+随项目一起分发或使用的第三方内容，各自沿用原来的许可：
+
+- 词典 ECDICT：MIT，见 `data/raw/ECDICT-LICENSE`（词典文件本身由 `setup.sh` 下载，不在仓库里）
+- 字体 Funnel Display、Funnel Sans、DM Mono：SIL Open Font License
+- 图标：Lucide（ISC）、VSCode Icons（MIT）、SVG Logos（CC0），出处见 `web/icons/icons-credits.json`；DeepSeek、Claude 的标志是其所有者的商标，只用来标明对应的服务
