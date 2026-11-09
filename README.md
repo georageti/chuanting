@@ -6,12 +6,13 @@
 
 [![下载 Mac 版](assets/btn-mac.svg)](https://github.com/georageti/chuanting/releases/latest/download/chuanting-mac.zip)
 [![下载 Windows 版](assets/btn-windows.svg)](https://github.com/georageti/chuanting/releases/latest/download/chuanting-windows.zip)
+[![打开手机网页版](assets/btn-web.svg)](https://georageti.github.io/chuanting/)
 
 下载后解压，打开里面的「先看我.txt」：先装 Python 3.10 以上，再双击「安装川听」（Mac 是 `.command`，Windows 是 `.bat`）。下载包里已经带好词典，不用再另外下载。所有版本见 [Releases](https://github.com/georageti/chuanting/releases)。
 
 ## 手机网页版
 
-用手机浏览器打开 **https://georageti.github.io/chuanting/**，不用装任何东西。iPhone 在 Safari 里点“分享 → 添加到主屏幕”，以后就像 App 一样打开；第一次打开会下载约 3MB 的词典，之后断网也能打开和练习。
+用手机浏览器打开 **[georageti.github.io/chuanting](https://georageti.github.io/chuanting/)**，不用装任何东西。iPhone 在 Safari 里点“分享 → 添加到主屏幕”，以后就像 App 一样打开；第一次打开会下载约 3MB 的词典，之后断网也能打开和练习。
 
 - 没有服务器：识别生词词组、生词本、练习、复习都在手机浏览器里跑，数据只存在这台手机上。
 - AI 逐句分析和编语境句：在「设置」里填自己的 DeepSeek（或 Claude）Key，手机直接调用接口。
