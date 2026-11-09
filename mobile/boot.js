@@ -112,7 +112,7 @@ async function boot() {
 
 boot().catch((e) => {
   say(false);
-  document.body.insertAdjacentHTML('afterbegin', `<div style="padding:24px;background:#fff3f3;color:#b3261e">川听没能启动：${String(e.message || e)}。请检查网络后刷新页面。</div>`);
+  window.__ctFail?.(`川听没能启动：${String(e.message || e)}。`);
 });
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {

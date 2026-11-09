@@ -23,10 +23,21 @@ HEAD_EXTRA = """<meta name="referrer" content="no-referrer">
 <meta name="apple-mobile-web-app-title" content="川听">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 """
-BEFORE_APP = """<script>window.CHUANTING_LOCAL = true; window.CHUANTING_READY = new Promise((r) => { window.__ctReady = r; });</script>
+BEFORE_APP = """<script>
+window.CHUANTING_LOCAL = true;
+window.CHUANTING_READY = new Promise((r) => { window.__ctReady = () => { window.__ctOk = true; document.getElementById('ct-fail')?.remove(); r(); }; });
+// 有脚本没下载成功（网络抖动、刚发布时 CDN 偶尔 503）或者半分钟还没准备好：提示并给“重新加载”按钮，不要一声不响地卡住
+window.__ctFail = (why) => {
+  if (window.__ctOk || document.getElementById('ct-fail')) return;
+  document.body.insertAdjacentHTML('afterbegin', '<div id="ct-fail" style="position:fixed;inset:0 0 auto 0;z-index:60;padding:14px 16px;'
+    + 'background:#fff3f3;color:#8a1c14;font:15px/1.5 system-ui;display:flex;gap:12px;align-items:center;justify-content:space-between">'
+    + '<span>' + why + '</span><button onclick="location.reload()" style="border:0;border-radius:8px;padding:8px 14px;background:#1f6b3a;color:#fff;font:inherit;white-space:nowrap;flex:none">重新加载</button></div>');
+};
+setTimeout(() => window.__ctFail('川听加载得有点慢，可能是网络不好。'), 30000);
+</script>
 """
 AFTER_APP = """
-<script type="module" src="boot.js"></script>"""
+<script type="module" src="boot.js" onerror="window.__ctFail('川听有文件没下载成功，请检查网络后重新加载。')"></script>"""
 
 
 def main() -> None:
