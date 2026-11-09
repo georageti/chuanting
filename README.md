@@ -9,6 +9,17 @@
 
 下载后解压，打开里面的「先看我.txt」：先装 Python 3.10 以上，再双击「安装川听」（Mac 是 `.command`，Windows 是 `.bat`）。下载包里已经带好词典，不用再另外下载。所有版本见 [Releases](https://github.com/georageti/chuanting/releases)。
 
+## 手机网页版
+
+用手机浏览器打开 **https://georageti.github.io/chuanting/**，不用装任何东西。iPhone 在 Safari 里点“分享 → 添加到主屏幕”，以后就像 App 一样打开；第一次打开会下载约 3MB 的词典，之后断网也能打开和练习。
+
+- 没有服务器：识别生词词组、生词本、练习、复习都在手机浏览器里跑，数据只存在这台手机上。
+- AI 逐句分析和编语境句：在「设置」里填自己的 DeepSeek（或 Claude）Key，手机直接调用接口。
+- 朗读：默认用百度翻译的在线发音（国内直连，能读整句）；连不上时自动改用手机自带的朗读。
+- 和 Mac 版互通：「设置 → 学习记录」里导出文件，在另一边导入，会合并、不覆盖。
+- 和 Mac 版的区别：不能导出 MP3 听力包。
+- 国内手机不开 VPN 可能打不开 github.io；以后会加一个国内能直连的地址。
+
 ## 启动
 
 **Mac**：在“应用程序”里打开 **川听**，或者按 `⌘ 空格` 用 Spotlight 搜“川听”。打开后可以在程序坞里的图标上右键，选“选项 → 在程序坞中保留”。快捷入口用 `python3 -I scripts/build_mac_app.py --install` 生成（装到 `~/Applications/川听.app`），项目文件夹挪了位置要重新生成一次。也可以双击 `启动川听.command`。
@@ -70,6 +81,10 @@ web/         网页（原生 JS，支持深色模式）
   fonts/       Funnel Display / Funnel Sans / DM Mono（本地，SIL OFL）
   icons/       taste-skill icons.mjs 下载的图标，来源见 icons-credits.json
 scripts/build_dict.py   把 ECDICT 预处理成 data/dict.sqlite
+scripts/build_mobile_dict.py  生成手机版的精简词典 mobile/dict/，并从 Python 导出共享常量 mobile/lib/shared.js
+scripts/build_site.py   拼出手机网页版 dist/site/（GitHub Actions 推送后自动发布到 Pages）
+mobile/      手机网页版：boot.js 启动；lib/ 里是 Python 后端的 JS 移植（识别、AI、复习、本地接口）；vendor/ 是打包好的 Claude 官方 SDK
+tests/mobile/  手机版本地接口测试（node --test tests/mobile/）和与 Python 版的识别对拍（node tests/mobile/parity.mjs）
 scripts/setup.sh        Mac 一键安装
 scripts/setup.ps1       Windows 一键安装（顺带建桌面、开始菜单快捷方式）
 scripts/build_mac_app.py  生成 Mac 快捷入口 川听.app
@@ -133,4 +148,5 @@ powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 
 - 词典 ECDICT：MIT，见 `data/raw/ECDICT-LICENSE`（词典文件本身由 `setup.sh` 下载，不在仓库里）
 - 字体 Funnel Display、Funnel Sans、DM Mono：SIL Open Font License
+- Claude 官方 JavaScript SDK（打包在 `mobile/vendor/anthropic-sdk.js`）：Apache-2.0，见 `mobile/vendor/anthropic-sdk.LICENSE`
 - 图标：Lucide（ISC）、VSCode Icons（MIT）、SVG Logos（CC0），出处见 `web/icons/icons-credits.json`；DeepSeek、Claude 的标志是其所有者的商标，只用来标明对应的服务

@@ -73,7 +73,7 @@
           <b>全部过一遍</b><span class="card__num roll" id="n-all">0</span>
           <span class="card__line">随机练完整个生词本，不限词数</span>
         </button>
-        <button class="card" id="export-mp3">
+        <button class="card" id="export-mp3" data-desktop-only>
           <i data-i="download"></i>
           <b>导出听力包</b><span class="card__num">MP3</span>
           <span class="card__line">挖空句、停顿、答案拼读、原句、中文</span>
@@ -208,7 +208,7 @@
         <option value="kind">按类型分组</option><option value="none">不分组</option>
       </select></label>
       <button class="btn btn--secondary" id="gen-all">为没有语境的词生成句子</button>
-      <a class="btn btn--secondary" href="/api/export/wordbook">导出到川词</a>
+      <button class="btn btn--secondary" id="export-wordbook">导出到川词</button>
     </div>
     <div class="list" id="word-list"></div>
     <h2 class="group-title">已会的词 <span class="muted" id="known-count"></span></h2>
@@ -260,7 +260,13 @@
 
     <h2 class="group-title">朗读</h2>
     <div class="list form">
-      <label class="row"><span class="row__k">声音</span><select id="s-voice">
+      <label class="row" data-mobile-only><span class="row__k">朗读来源</span><select id="s-mtts">
+        <option value="baidu-us">在线朗读 · 美音（推荐）</option>
+        <option value="baidu-uk">在线朗读 · 英音</option>
+        <option value="device">手机自带朗读（离线可用）</option>
+      </select></label>
+      <p class="row-note" data-mobile-only>在线朗读用的是百度翻译的发音，国内能直连；连不上时会自动改用手机自带的朗读。</p>
+      <label class="row" data-desktop-only><span class="row__k">声音</span><select id="s-voice">
         <option value="en-US-AriaNeural">美音 · Aria（女）</option>
         <option value="en-US-JennyNeural">美音 · Jenny（女）</option>
         <option value="en-US-AvaNeural">美音 · Ava（女）</option>
@@ -278,8 +284,8 @@
         <option value="show">显示句子：空位“嘀”一声，显示挖空句</option>
         <option value="full">读全：读完整句，显示挖空句</option>
       </select></label>
-      <p class="row-note">练习和导出的 MP3 都按这里读。“显示句子”是你选的方式，不算看提示，不影响复习评分。</p>
-      <label class="row"><span class="row__k">MP3 里的停顿</span><select id="s-pause">
+      <p class="row-note">练习<span data-desktop-only>和导出的 MP3 </span>都按这里读。“显示句子”是你选的方式，不算看提示，不影响复习评分。</p>
+      <label class="row" data-desktop-only><span class="row__k">MP3 里的停顿</span><select id="s-pause">
         <option value="2000">2 秒</option><option value="3000">3 秒</option><option value="4000">4 秒</option><option value="6000">6 秒</option>
       </select></label>
     </div>
@@ -293,11 +299,17 @@
       <label class="row"><span class="row__k">每轮词数</span><select id="s-session"><option value="20">20 个</option><option value="50">50 个</option><option value="100">100 个</option><option value="200">200 个</option><option value="0">全部</option></select></label>
       <p class="row-note">今日练习、只复习和只学新词使用这个数量；新词仍受每日额度限制。“全部过一遍”和“练这组”始终覆盖所选全部词条。</p>
     </div>
-    <h2 class="group-title">川听</h2>
+    <h2 class="group-title">学习记录</h2>
     <div class="list form">
+      <div class="row row--wrap"><span class="row__k">备份和搬家</span><span class="muted quit-note">生词本、语境句、复习进度和已会的词。Mac 版和手机网页版之间用这个文件互相搬，导入时会合并，不会覆盖。</span></div>
+      <div class="row row--wrap"><button class="text-btn" id="export-backup">导出学习记录</button><button class="text-btn" id="import-backup">导入学习记录</button><input type="file" id="import-file" accept=".json,application/json" hidden></div>
+    </div>
+    <h2 class="group-title" data-desktop-only>川听</h2>
+    <div class="list form" data-desktop-only>
       <div class="row"><span class="row__k">后台服务</span><span class="muted quit-note">从程序坞或 Spotlight 打开的川听在后台运行，用完可以在这里关掉。</span><button class="text-btn danger" id="quit-app">关闭川听</button></div>
     </div>
-    <p class="foot">数据保存在 ~/Library/Application Support/川听/。词典来自 ECDICT（MIT），语音来自微软 Edge 朗读。图标：DeepSeek、Claude 为其所有者的商标。</p>
+    <p class="foot" data-desktop-only>数据保存在这台电脑上（Mac：~/Library/Application Support/川听/）。词典来自 ECDICT（MIT），语音来自微软 Edge 朗读。图标：DeepSeek、Claude 为其所有者的商标。</p>
+    <p class="foot" data-mobile-only>数据只保存在这台手机的浏览器里，换手机或清除网站数据前请先“导出学习记录”。词典来自 ECDICT（MIT），在线朗读来自百度翻译。图标：DeepSeek、Claude 为其所有者的商标。</p>
   </section>
 </main>
 

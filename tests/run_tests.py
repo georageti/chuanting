@@ -335,6 +335,23 @@ if sys.platform == "darwin":
 from chuanting import __main__ as _m  # noqa: E402
 check("没运行时 already_running 为假", _m.already_running("http://127.0.0.1:1/") is False)
 
+print("学习记录导出导入（和手机版互通）")
+bk = c.get("/api/export/backup").json()
+check("导出学习记录", bk["format"] == "chuanting-backup/1" and bk["items"] and any(i["state"] for i in bk["items"]))
+n_items = len(c.get("/api/items").json())
+r = c.post("/api/import/backup", json=bk).json()
+check("重复导入不会重复加", r["added"] == 0 and len(c.get("/api/items").json()) == n_items, r)
+mob = {"format": "chuanting-backup/1", "app": "mobile", "items": [{"key": "serendipity", "kind": "word", "translation": "意外发现",
+       "state": {"s": 3.2, "df": 5.0, "last": "2026-11-08", "due": "2026-11-12", "reps": 2, "lapses": 0, "learned": "2026-11-07"},
+       "examples": [{"sentence": "It was pure serendipity.", "surface": "serendipity", "pieces": None}],
+       "contexts": [{"sentence": "By serendipity, we met again.", "answer": ["serendipity"], "hint": "", "note": "", "source": "ai:deepseek", "used": 1}]}],
+       "known": [{"key": "apple", "added": 1}], "log": [{"day": "2026-11-08", "key": "serendipity", "grade": 3, "mistakes": 0, "at": 123.0}]}
+r = c.post("/api/import/backup", json=mob).json()
+it = store.get_item("serendipity")
+check("导入手机版的记录：生词、进度、语境句、已会", r["added"] == 1 and it["state"]["reps"] == 2 and store.contexts_of("serendipity")
+      and "apple" in store.known_set(), r)
+check("不是学习记录文件时拒绝", c.post("/api/import/backup", json={"format": "x"}).status_code == 400)
+
 if "--tts" in sys.argv:
     print("语音（联网）")
     r = c.get("/api/tts", params={"text": "Hello there."})

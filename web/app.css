@@ -561,6 +561,10 @@ body.is-focus .stage--run { box-shadow: inset 0 0 140px color-mix(in oklab, var(
   .list:has(> .w-row:hover) > .w-row:not(:hover), .cards:has(> .card:hover) > .card:not(:hover) { filter: none; }
 }
 
+/* 手机网页版（html.mobile-web）和 Mac / Windows 版各自专用的元素 */
+html.mobile-web [data-desktop-only] { display: none !important; }
+html:not(.mobile-web) [data-mobile-only] { display: none !important; }
+
 /* ---------------------------------------------------------------- 窄屏 */
 @media (max-width: 1100px) {
   .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }

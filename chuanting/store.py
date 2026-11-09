@@ -332,3 +332,64 @@ def history(days: int = 14) -> list[dict]:
     counts = {r["day"]: r["n"] for r in q("SELECT day, COUNT(*) n FROM log WHERE day >= ? GROUP BY day",
                                          (srs.add_days(today, -(days - 1)),))}
     return [{"day": d, "n": counts.get(d, 0)} for d in (srs.add_days(today, -i) for i in range(days - 1, -1, -1))]
+
+
+# ---------- 学习记录导出 / 导入（和手机网页版同一种格式：chuanting-backup/1） ----------
+
+def export_backup() -> dict:
+    items = []
+    for it in list_items():
+        items.append({
+            "key": it["key"], "kind": it["kind"], "translation": it["translation"], "phonetic": it["phonetic"],
+            "tags": it["tags"], "level": it["level"], "rank": it["rank"], "added": it["added"], "state": it["state"],
+            "examples": [{"sentence": e["sentence"], "surface": e["surface"], "pieces": e["pieces"]} for e in examples_of(it["key"])],
+            "contexts": [{"sentence": c["sentence"], "answer": c["answer"], "hint": c["hint"], "note": c["note"],
+                          "source": c["source"], "used": c["used"]} for c in contexts_of(it["key"])],
+        })
+    return {"format": "chuanting-backup/1", "exportedAt": time.strftime("%Y-%m-%dT%H:%M:%S"), "app": "mac", "items": items,
+            "known": q("SELECT key, added FROM known"), "log": q("SELECT day, key, grade, mistakes, at FROM log")}
+
+
+def import_backup(data: dict) -> dict:
+    """合并导入：新词加进来；已有的词保留练得更多（reps 多，一样多就看最近一次）的那份进度；例句、语境句、已会、练习记录取并集"""
+    if not isinstance(data, dict) or data.get("format") != "chuanting-backup/1":
+        raise ValueError("不是川听的学习记录文件")
+    added = updated = 0
+    for src in data.get("items", []):
+        key = src.get("key")
+        if not key:
+            continue
+        it = get_item(key)
+        if not it:
+            tx("INSERT INTO items(key, kind, translation, phonetic, tags, level, rank, added, state) VALUES(?,?,?,?,?,?,?,?,?)",
+               (key, src.get("kind", "word"), src.get("translation", ""), src.get("phonetic", ""),
+                json.dumps(src.get("tags", [])), src.get("level"), src.get("rank", 0), src.get("added") or time.time(),
+                json.dumps(src["state"]) if src.get("state") else None))
+            added += 1
+        else:
+            def reps(st):
+                return st.get("reps", 0) if st else -1
+            mine, theirs = it["state"], src.get("state")
+            if reps(theirs) > reps(mine) or (reps(theirs) == reps(mine) and (theirs or {}).get("last", "") > (mine or {}).get("last", "")):
+                tx("UPDATE items SET state=? WHERE key=?", (json.dumps(theirs), key))
+                updated += 1
+        for e in src.get("examples", []):
+            tx("INSERT OR IGNORE INTO examples(key, doc_id, sentence, surface, pieces) VALUES(?,?,?,?,?)",
+               (key, None, e["sentence"], e.get("surface", ""), json.dumps(e["pieces"], ensure_ascii=False) if e.get("pieces") else None))
+        have = {c["sentence"] for c in contexts_of(key)}
+        for c in src.get("contexts", []):
+            if c.get("sentence") and c["sentence"] not in have:
+                tx("INSERT INTO contexts(key, sentence, answer, hint, note, source, used, created) VALUES(?,?,?,?,?,?,?,?)",
+                   (key, c["sentence"], json.dumps(c.get("answer", []), ensure_ascii=False), c.get("hint", ""), c.get("note", ""),
+                    c.get("source", ""), c.get("used", 0), time.time()))
+                have.add(c["sentence"])
+    for k in data.get("known", []):
+        if k.get("key"):
+            tx("INSERT OR IGNORE INTO known VALUES(?,?)", (k["key"], k.get("added") or time.time()))
+    seen = {(r["day"], r["key"], r["at"]) for r in q("SELECT day, key, at FROM log")}
+    logs = 0
+    for l in data.get("log", []):
+        if (l.get("day"), l.get("key"), l.get("at")) not in seen:
+            tx("INSERT INTO log VALUES(?,?,?,?,?)", (l["day"], l["key"], l["grade"], l.get("mistakes", 0), l["at"]))
+            logs += 1
+    return {"added": added, "updated": updated, "logs": logs}

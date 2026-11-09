@@ -6,7 +6,14 @@ const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+// 手机网页版（mobile/）没有服务器：页面先放一个 window.CHUANTING_READY，本地接口装好后用 window.CHUANTING.api 处理
+const LOCAL = typeof window !== "undefined" && !!window.CHUANTING_LOCAL;
+
 async function api(path, opts = {}) {
+  if (LOCAL) {
+    await window.CHUANTING_READY;
+    return window.CHUANTING.api(path, opts);
+  }
   const init = { ...opts };
   if (opts.json !== undefined) {
     init.method = init.method || 'POST';
@@ -109,24 +116,37 @@ const Audio_ = {
   stop() {
     this.token++;
     if (this.current) { this.current.pause(); this.current = null; }
+    if (LOCAL) window.CHUANTING?.stopSpeech?.();
     this.playing(false);
   },
   url(text, { lang = 'en', slow = false } = {}) {
+    if (LOCAL) return window.CHUANTING.ttsUrl(text, { lang, slow });
     return `/api/tts?lang=${lang}&slow=${slow ? 1 : 0}&text=${encodeURIComponent(text)}`;
   },
+  fetchAudio(url) {
+    return LOCAL ? window.CHUANTING.prefetchAudio(url) : fetch(url).then((r) => r.blob());
+  },
   prefetch(card) {
-    for (const s of card.segments) if (s.t && /[A-Za-z0-9]/.test(s.t)) fetch(this.url(s.t)).catch(() => {});
-    fetch(this.url(card.sentence)).catch(() => {});
+    for (const s of card.segments) if (s.t && /[A-Za-z0-9]/.test(s.t)) this.fetchAudio(this.url(s.t)).catch(() => {});
+    this.fetchAudio(this.url(card.sentence)).catch(() => {});
   },
   playUrl(url, token, onStart) {
+    if (LOCAL && url.startsWith('speech:')) return window.CHUANTING.speak(url, () => token !== this.token, onStart);
     return new Promise((resolve, reject) => {
       if (token !== this.token) return resolve();
-      const a = new Audio(url);
+      // 手机网页版复用同一个已经“解锁”的播放器：iPhone 上没有点按时新建的播放器不能出声
+      const a = LOCAL ? window.CHUANTING.sharedAudio(url) : new Audio(url);
+      if (LOCAL && url.includes('#slow')) a.playbackRate = 0.8;
       this.current = a;
       a.onplaying = () => onStart?.();
       a.onended = resolve;
       // 被重听或换卡打断不算错误
-      const fail = (e) => (token !== this.token || e?.name === 'AbortError' ? resolve() : reject(new Error('语音加载失败')));
+      const fail = (e) => {
+        if (token !== this.token || e?.name === 'AbortError') return resolve();
+        // 手机网页版：在线朗读连不上时，改用手机自带的朗读
+        if (LOCAL && window.CHUANTING.fallbackSpeech) return window.CHUANTING.fallbackSpeech(url, () => token !== this.token, onStart).then(resolve, reject);
+        reject(new Error('语音加载失败'));
+      };
       a.onerror = fail;
       a.play().catch(fail);
     });
@@ -134,6 +154,7 @@ const Audio_ = {
   beep(token) {
     if (token !== this.token) return Promise.resolve();
     this.ctx = this.ctx || new (window.AudioContext || window.webkitAudioContext)();
+    if (this.ctx.state === 'suspended') this.ctx.resume();
     const ctx = this.ctx, o = ctx.createOscillator(), g = ctx.createGain(), t = ctx.currentTime;
     o.frequency.value = 880;
     g.gain.setValueAtTime(0, t);
@@ -648,7 +669,7 @@ const Prefetch = {
       const t = this.queue.shift();
       if (this.done.has(t)) continue;
       this.busy++;
-      fetch(Audio_.url(t)).then((r) => r.blob()).then(() => this.done.add(t)).catch(() => {}).finally(() => {
+      Audio_.fetchAudio(Audio_.url(t)).then(() => this.done.add(t)).catch(() => {}).finally(() => {
         if (gen !== this.gen) return;
         this.busy--;
         this.pump();
@@ -986,6 +1007,7 @@ const FIELDS = {
   's-per': ['ai', 'per_item'], 's-voice': ['tts', 'voice'], 's-rate': ['tts', 'rate'], 's-pause': ['study', 'pause_ms'],
   's-level': ['filter', 'hide_level'], 's-rank': ['filter', 'hide_rank'], 's-daily': ['study', 'daily_new'],
   's-readmode': ['study', 'read_mode'],
+  's-mtts': ['tts', 'mobile_engine'],
   's-session': ['study', 'session_size'],
   's-phrases': ['extract', 'phrases'],
 };
@@ -1036,6 +1058,53 @@ $('#quit-app').addEventListener('click', async () => {
   Audio_.stop();
   document.body.innerHTML = '<main style="margin:auto;text-align:center;padding:64px 24px"><h1>川听已关闭</h1>'
     + '<p class="muted" style="margin-top:12px">可以关掉这个网页了。下次从程序坞或 Spotlight 打开“川听”。</p></main>';
+});
+
+// iPhone / iPad：声音要在第一次点按时“解锁”，之后程序里才能自动播放
+if (typeof document !== 'undefined' && document.addEventListener) {
+  const unlock = () => {
+    try {
+      Audio_.ctx = Audio_.ctx || new (window.AudioContext || window.webkitAudioContext)();
+      if (Audio_.ctx.state === 'suspended') Audio_.ctx.resume();
+    } catch { /* 不支持 WebAudio */ }
+    if (LOCAL) window.CHUANTING?.unlockAudio?.();
+    document.removeEventListener('pointerdown', unlock, true);
+    document.removeEventListener('touchend', unlock, true);
+  };
+  document.addEventListener('pointerdown', unlock, true);
+  document.addEventListener('touchend', unlock, true);
+}
+
+// ---------- 学习记录导出 / 导入 ----------
+function saveJSON(data, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+}
+const stamp = () => new Date().toISOString().slice(0, 10).replace(/-/g, '');
+$('#export-backup')?.addEventListener('click', async () => {
+  try { saveJSON(await api('/api/export/backup'), `川听学习记录-${stamp()}.json`); toast('已导出学习记录'); }
+  catch (e) { toast(e.message); }
+});
+$('#export-wordbook')?.addEventListener('click', async () => {
+  try { saveJSON(await api('/api/export/wordbook'), `川听生词-${stamp()}.json`); toast('已导出，可以导入川词'); }
+  catch (e) { toast(e.message); }
+});
+$('#import-backup')?.addEventListener('click', () => $('#import-file').click());
+$('#import-file')?.addEventListener('change', async (e) => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  try {
+    const r = await api('/api/import/backup', { json: JSON.parse(await f.text()) });
+    toast(`导入完成：新加 ${r.added} 个，更新进度 ${r.updated} 个，练习记录 ${r.logs} 条`, 5000);
+    if (!$('#words').hidden) loadWords();
+  } catch (err) {
+    toast(err instanceof SyntaxError ? '这个文件不是川听的学习记录' : err.message, 5000);
+  }
 });
 
 // ---------- 启动 ----------

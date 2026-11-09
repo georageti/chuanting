@@ -1,0 +1,16 @@
+{
+  "name": "川听：听语境，拼单词",
+  "short_name": "川听",
+  "description": "扫描英文文章里的生词和词组，AI 编挖空语境句读给你听，听音拼写，按 FSRS 复习。",
+  "lang": "zh-CN",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f2f3",
+  "theme_color": "#f4f2f3",
+  "icons": [
+    { "src": "appicons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "appicons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "appicons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

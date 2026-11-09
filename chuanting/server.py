@@ -550,6 +550,20 @@ async def api_export_mp3(body: dict = Body(default={})):
     return FileResponse(out, media_type="audio/mpeg", filename=out.name)
 
 
+@app.get("/api/export/backup")
+def api_export_backup():
+    """学习记录（生词本、语境句、复习进度、已会、练习记录），网页另存为文件；手机网页版能导入"""
+    return store.export_backup()
+
+
+@app.post("/api/import/backup")
+def api_import_backup(data: dict = Body(...)):
+    try:
+        return store.import_backup(data)
+    except ValueError as e:
+        err(str(e))
+
+
 @app.get("/api/export/wordbook")
 def api_export_wordbook():
     """导出成川词的 wordbook/1 文件"""
