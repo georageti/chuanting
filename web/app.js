@@ -626,7 +626,7 @@ async function showDoc(doc, fresh) {
 
   const src = { ai: '已由 AI 逐句分析', mixed: '前半部分由 AI 逐句分析，其余用词典识别', dict: '没有经过 AI 分析，词组只用了词典匹配' }[doc.meta?.phrases || 'dict'];
   $('#doc-summary').textContent = `共识别 ${doc.totalWords} 个生词，按当前筛选显示 ${doc.cands.length} 个；另有 ${doc.totalPhrases} 个词组，在“逐句解析”里勾选。${src}。`;
-  $('#rescan').hidden = doc.meta?.phrases === 'ai';
+  $('#rescan').hidden = doc.meta?.phrases === 'ai' && doc.total > 0;
   if (fresh && doc.meta?.warnings?.length) toast(doc.meta.warnings.join('；'), 6000);
   D.hasAnalysis = doc.hasAnalysis;
   if (fresh) setDocView('cands');
@@ -835,7 +835,9 @@ function renderCands() {
       <div class="side-btns"><button class="icon-btn say" aria-label="朗读 ${esc(c.key)}"><i data-i="volume-2"></i></button>${c.inList ? '' : '<button class="text-btn known">会了</button>'}</div>
     </div>`).join('') + '</div>';
   $('#cands').innerHTML = block('生词', cands)
-    || '<div class="empty">按当前筛选没有生词了。可以降低隐藏等级，或者勾选“显示全部”。</div>';
+    || (D.doc.totalWords === 0
+      ? '<div class="empty">这篇文档尚未识别出单词。可以在“逐句解析”查看原文，或点“用 AI 重新分析”重试。</div>'
+      : '<div class="empty">按当前筛选没有生词了。可以降低隐藏等级，或者勾选“显示全部”。</div>');
   icons($('#cands'));
   $$('#cands .cand').forEach((row) => {
     const key = row.dataset.key;

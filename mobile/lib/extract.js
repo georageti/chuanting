@@ -27,9 +27,19 @@ export class Token {
 
 // ---------- 分句 ----------
 
+const WORD_LIST_ENTRY = /^[A-Za-z]+(?:['’-][A-Za-z]+)*(?:[ \t]+[A-Za-z]+(?:['’-][A-Za-z]+)*){0,5}$/;
+
 export function splitSentences(text) {
   const out = [];
+  text = text.replace(/\r\n?/g, '\n');
   for (let para of text.split(/\n\s*\n|\n(?=\s*[-*•\d]+[.)]?\s)/)) {
+    const lines = para.split('\n').map((line) => line.trim()).filter(Boolean);
+    // 单词行为主的词表逐行保留；文章的普通软换行仍按原规则合并。
+    if (lines.length > 1 && lines.every((line) => WORD_LIST_ENTRY.test(line))
+        && lines.filter((line) => line.split(/\s+/).length === 1).length * 2 >= lines.length) {
+      for (const line of lines) out.push(line.replace(/\s+/g, ' '));
+      continue;
+    }
     para = para.replace(/\s+/g, ' ').trim();
     if (!para) continue;
     let start = 0;
@@ -51,9 +61,22 @@ export function tokenize(sentence) {
   return [...sentence.matchAll(TOKEN_RE)].map((m) => new Token(m[0], m.index, m.index + m[0].length));
 }
 
-/** 分句，并去掉过长的（多半是表格或乱码）；AI 分析和 extract 用同一份编号 */
+/** 长段按单词边界分段，不丢弃原文；AI 分析和 extract 用同一份编号。 */
 export function usableSentences(text) {
-  return splitSentences(text).filter((s) => s.length <= 1200);
+  const out = [];
+  for (let sentence of splitSentences(text)) {
+    while (sentence.length > 1200) {
+      let cut = sentence.lastIndexOf(' ', 1200);
+      if (cut <= 0) {
+        cut = sentence.indexOf(' ', 1200);
+        if (cut < 0) break;
+      }
+      out.push(sentence.slice(0, cut));
+      sentence = sentence.slice(cut).trimStart();
+    }
+    out.push(sentence);
+  }
+  return out;
 }
 
 // ---------- 词组匹配 ----------

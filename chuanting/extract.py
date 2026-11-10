@@ -84,9 +84,19 @@ class Candidate:
 
 # ---------- 分句 ----------
 
+WORD_LIST_ENTRY = re.compile(r"[A-Za-z]+(?:['’-][A-Za-z]+)*(?:[ \t]+[A-Za-z]+(?:['’-][A-Za-z]+)*){0,5}")
+
+
 def split_sentences(text: str) -> list[str]:
     out = []
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
     for para in re.split(r"\n\s*\n|\n(?=\s*[-*•\d]+[.)]?\s)", text):
+        lines = [line.strip() for line in para.splitlines() if line.strip()]
+        # 单词行为主的词表逐行保留，避免相邻行误配成词组；文章的普通软换行仍合并。
+        if (len(lines) > 1 and all(WORD_LIST_ENTRY.fullmatch(line) for line in lines)
+                and sum(len(line.split()) == 1 for line in lines) * 2 >= len(lines)):
+            out.extend(re.sub(r"\s+", " ", line) for line in lines)
+            continue
         para = re.sub(r"\s+", " ", para).strip()
         if not para:
             continue
@@ -238,8 +248,19 @@ def _surface(sentence: str, toks: list[Token], s: int, e: int) -> str:
 
 
 def usable_sentences(text: str) -> list[str]:
-    """分句，并去掉过长的（多半是表格或乱码）；AI 词组识别和 extract 用同一份编号"""
-    return [s for s in split_sentences(text) if len(s) <= 1200]
+    """长段按单词边界分段，不丢弃原文；AI 识别和 extract 使用同一份编号。"""
+    out = []
+    for sentence in split_sentences(text):
+        while len(sentence) > 1200:
+            cut = sentence.rfind(" ", 0, 1201)
+            if cut <= 0:
+                cut = sentence.find(" ", 1200)
+                if cut < 0:
+                    break  # 单个超长词保持原样，不切出并不存在的词。
+            out.append(sentence[:cut])
+            sentence = sentence[cut:].lstrip()
+        out.append(sentence)
+    return out
 
 
 def extract(text: str, max_examples: int = 3, analysis: dict | None = None) -> list[Candidate]:

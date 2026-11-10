@@ -7,13 +7,15 @@ import { gunzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import * as lx from '../../mobile/lib/lexicon.js';
-import { extract, filterCandidates } from '../../mobile/lib/extract.js';
+import { extract, filterCandidates, usableSentences } from '../../mobile/lib/extract.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const load = (n) => JSON.parse(gunzipSync(readFileSync(path.join(ROOT, 'mobile/dict', n))).toString('utf8'));
 lx.init({ words: load('words.json.gz'), forms: load('forms.json.gz'), phrases: load('phrases.json.gz') });
 
 const TEXTS = [
+  Array.from({ length: 723 }, (_, i) => ['painstaking', 'ubiquitous', 'ephemeral', 'in fact'][i % 4]).join('\n'),
+  'painstaking ' + 'ubiquitous ephemeral reluctant '.repeat(180) + 'eloquent',
   readFileSync(path.join(ROOT, 'tests/sample.txt'), 'utf8'),
   `Ministers have been sitting on the fence for months, but the budget finally forced their hand.
 Critics say the reforms will cut through red tape, yet small firms fear they will bear the brunt of the new levy.
@@ -32,7 +34,8 @@ texts = json.loads(sys.stdin.read())
 out = []
 for t in texts:
     cands = [c.to_dict() for c in extract.extract(t)]
-    out.append({"all": cands, "filtered": [c["key"] for c in extract.filter_candidates(cands)]})
+    out.append({"all": cands, "filtered": [c["key"] for c in extract.filter_candidates(cands)],
+                "sentences": extract.usable_sentences(t)})
 print(json.dumps(out))
 `], { input: JSON.stringify(TEXTS), maxBuffer: 1 << 26 }).toString());
 
@@ -49,7 +52,8 @@ TEXTS.forEach((text, i) => {
     && JSON.stringify(jsMap.get(k).examples.map((e) => e.surface)) !== JSON.stringify(pyMap.get(k).examples.map((e) => e.surface)));
   const jsFiltered = filterCandidates(js).map((c) => c.key);
   const filtDiff = py[i].filtered.filter((k) => !jsFiltered.includes(k) && (pyMap.get(k).kind !== 'word' || lx.word(k)));
-  const ok = !badOnlyPy.length && !onlyJs.length && !surfaceDiff.length && !filtDiff.length;
+  const sentenceDiff = JSON.stringify(usableSentences(text)) !== JSON.stringify(py[i].sentences);
+  const ok = !sentenceDiff && !badOnlyPy.length && !onlyJs.length && !surfaceDiff.length && !filtDiff.length;
   if (!ok) failed++;
   console.log(`${ok ? '✓' : '✗'} 文本 ${i + 1}：Python ${pyMap.size} 个，JS ${jsMap.size} 个`
     + (onlyPy.length ? `；精简词典没收的生僻词 ${onlyPy.length - badOnlyPy.length} 个` : ''));
@@ -57,6 +61,7 @@ TEXTS.forEach((text, i) => {
   if (onlyJs.length) console.log('   只在 JS：', onlyJs.join(', '));
   if (surfaceDiff.length) console.log('   例句位置不同：', surfaceDiff.join(', '));
   if (filtDiff.length) console.log('   筛选结果不同：', filtDiff.join(', '));
+  if (sentenceDiff) console.log('   分句结果不同');
 });
 console.log(failed ? `\n${failed} 段不一致` : '\n全部一致');
 process.exit(failed ? 1 : 0);
